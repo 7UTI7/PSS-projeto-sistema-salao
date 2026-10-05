@@ -1,5 +1,5 @@
 # 💇 Sistema Salão — Nicolle Neris Studio
-
+ 
 > Projeto acadêmico desenvolvido para a **FATEC Zona Leste** — Curso de Desenvolvimento de Software Multiplataforma (DSM).
 
 Sistema de gestão financeira mobile-first para o estúdio de beleza Nicolle Neris Studio, focado em centralizar e dar total visibilidade ao fluxo de caixa, DRE gerencial e controle financeiro de estoque.
