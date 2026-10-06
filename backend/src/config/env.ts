@@ -5,6 +5,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535),
   MONGO_URI: z.string().min(1),
+  MONGO_DNS_SERVERS: z.string().optional(),
   JWT_SECRET: z.string().min(32),
   CORS_ORIGIN: z.string().default('*'),
   API_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
