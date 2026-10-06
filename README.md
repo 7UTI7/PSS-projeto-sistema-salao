@@ -36,14 +36,15 @@ PSS-projeto-sistema-salao/
 │       ├── services/      # Comunicação com API (Axios)
 │       └── utils/         # Utilitários e helpers
 │
-├── backend/           # API RESTful (Node.js + TypeScript + Express/NestJS)
-│   └── src/
-│       ├── controllers/   # Recebimento e validação de requisições HTTP
-│       ├── models/        # Schemas Prisma (PostgreSQL) e Mongoose (MongoDB)
-│       ├── services/      # Regras de negócio e cálculos financeiros
-│       ├── repositories/  # Acesso abstrato aos bancos de dados
-│       ├── routes/        # Definição das rotas da API
-│       └── middlewares/   # JWT, RBAC, error handling
+├── backend/           # API RESTful (Node.js 20 + TypeScript + Express + MongoDB)
+│   ├── src/
+│   │   ├── config/        # Ambiente, MongoDB, logs e instrumentação
+│   │   ├── controllers/   # HTTP e validação dos DTOs
+│   │   ├── models/        # Schemas Mongoose
+│   │   ├── services/      # Regras de autenticação e finanças
+│   │   ├── routes/        # Rotas modulares
+│   │   └── middlewares/   # JWT, RBAC e tratamento de erros
+│   └── DEPLOYMENT.md      # Guia de implantação VPS
 │
 ├── agents/            # Documentação e scripts dos agentes de IA
 └── skills/            # Skills e runbooks para os agentes
@@ -62,10 +63,13 @@ PSS-projeto-sistema-salao/
 - **Axios** (requisições HTTP com interceptors JWT)
 
 ### Backend (API)
-- **Node.js** + **TypeScript** com **Express** ou **NestJS**
-- **Prisma ORM** → **PostgreSQL** (dados transacionais, 3FN)
-- **Mongoose** → **MongoDB** (payloads brutos de ingestão)
-- **JWT** + **Bcrypt** (autenticação e segurança)
+- **Node.js 20+** + **TypeScript 5+** com **Express** em camadas
+- **Mongoose 8+** → **MongoDB Atlas** (persistência da API)
+- **JWT** + **bcrypt com 12 rounds** (autenticação e segurança)
+- **Zod** (DTOs e variáveis de ambiente) + **Pino** (logs JSON com redação)
+- **OpenTelemetry** opcional para exportação de traces via OTLP
+
+Para instalar e executar a API localmente, consulte [backend/README.md](backend/README.md). A política de divulgação responsável está em [SECURITY.md](SECURITY.md).
 
 ---
 
@@ -88,7 +92,7 @@ O desenvolvimento é organizado em 5 agentes especialistas:
 - ❌ **Proibido Hard Delete** — sempre usar `soft delete` (`deleted_at`)
 - ❌ **Proibido `any`** — tipagem estrita em todo o projeto
 - 💰 **Moeda** — sempre `R$ 1.234,56` (DECIMAL 10,2 no banco)
-- 🔒 **Bcrypt** — fator mínimo 10 nas senhas
+- 🔒 **Bcrypt** — fator mínimo 12 nas senhas
 - ⏱️ **JWT** — expiração ≤ 8 horas
 
 ---

@@ -68,12 +68,13 @@ O **Sistema Salão Nicolle Neris Studio** é uma aplicação mobile-first desenv
 * **Recursos Nativos:** Expo DocumentPicker / ImagePicker (para anexo de comprovantes) e Expo FileSystem.
 
 ### 3.2. Backend API
-* **Ambiente / Linguagem:** Node.js (TypeScript) com Express ou NestJS.
+* **Ambiente / Linguagem:** Node.js 20+ LTS com TypeScript 5+ e Express.js.
 * **Arquitetura:** Arquitetura em Camadas (Layered Clean Architecture):
   * `Controllers`: Validação de DTOs e controle de HTTP Status Code.
   * `Services`: Regras de negócio contábeis, cálculos e pipelines.
   * `Repositories`: Acesso abstrato aos bancos de dados.
-* **ORM / Query Builder:** Prisma ORM ou TypeORM para banco relacional; Mongoose para MongoDB.
+* **Banco de dados / ODM:** MongoDB Atlas com Mongoose 8+ para os modelos `User`, `Transaction` e `ImportBatch` desta atividade.
+* **Autenticação / validação / logs:** JWT com expiração de até 8 horas, bcrypt com 12 rounds, Zod para DTOs e ambiente, e Pino para logs JSON com redação de segredos.
 * **Processamento de Arquivos:** `xlsx` / `exceljs` para planilhas do Booksy; `pdf-parse` / `pdf2json` para extratos da InfinitePay.
 
 ### 3.3. Persistência Híbrida
@@ -191,7 +192,7 @@ Para permitir a execução paralela por agentes autônomos de IA (Cursor / Devin
 
 * **Tarefas Principais:**
   1. Escrever testes unitários e de integração (Jest / Supertest) para as regras de DRE e parsers de planilha.
-  2. Garantir criptografia Bcrypt (fator 10) nas senhas e expiração de JWT em <= 8 horas.
+  2. Garantir criptografia Bcrypt (fator mínimo 12) nas senhas e expiração de JWT em <= 8 horas.
   3. Validar tempo de resposta dos endpoints da API ($\le 1,5$s no P95) e tempo de importação em lote ($\le 5,0$s para 1000 linhas).
   4. Testar conformidade de contraste visual (WCAG 2.1 AA) e performance no mobile (payload inicial $< 3$MB).
   5. Garantir sanitização contra SQL Injection, XSS e validação de permissões RBAC em todos os endpoints HTTP.
