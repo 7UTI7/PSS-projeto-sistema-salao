@@ -5,7 +5,7 @@ import { logger } from './logger.js';
 
 export async function connectDatabase(): Promise<void> {
   if (env.MONGO_DNS_SERVERS) {
-    setServers(env.MONGO_DNS_SERVERS.split(',').map((server) => server.trim()));
+    setServers(env.MONGO_DNS_SERVERS.split(',').map((server) => server.trim()).filter(Boolean));
   }
 
   await mongoose.connect(env.MONGO_URI, {
