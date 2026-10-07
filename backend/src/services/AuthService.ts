@@ -111,6 +111,7 @@ export class AuthService {
     const passwordMatches = user ? await bcrypt.compare(password, user.passwordHash) : false;
 
     if (!user || !passwordMatches || !user.emailVerified) {
+      logger.warn({ event: 'login_failed', ...(user ? { userId: user.id } : {}) }, 'Falha de login');
       throw new AppError('E-mail ou senha inválidos.', 401, 'INVALID_CREDENTIALS');
     }
 
@@ -145,6 +146,7 @@ export class AuthService {
   async requestPasswordReset(email: string): Promise<void> {
     const user = await User.findOne({ email: email.toLowerCase(), deletedAt: null });
     if (!user) return;
+    logger.info({ event: 'password_reset_requested', userId: user.id }, 'Redefinição de senha solicitada');
 
     const token = randomUUID();
     user.passwordResetTokenHash = hashToken(token);
@@ -177,6 +179,7 @@ export class AuthService {
     user.lastPasswordChange = new Date();
     user.mustChangePassword = false;
     await user.save();
+    logger.info({ event: 'password_reset_completed', userId: user.id }, 'Redefinição de senha concluída');
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {

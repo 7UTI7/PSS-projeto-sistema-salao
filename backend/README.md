@@ -95,3 +95,28 @@ Em todas as requisições JSON, selecione **Body > raw > JSON**. Não use vírgu
 - **Datadog/New Relic:** não são necessários para a prova OpenTelemetry local; um collector Jaeger foi configurado e testado. Integração APM externa precisa de conta/endpoint próprio.
 
 Veja [DEPLOYMENT.md](DEPLOYMENT.md) para a VPS e o guia de divulgação responsável em [../SECURITY.md](../SECURITY.md).
+## Configuração por variável de ambiente
+
+| Variável | Para que serve |
+|---|---|
+| `PORT` | Porta da API (obrigatória). Troque a porta padrão só editando o `.env`. |
+| `HOST` | Interface de escuta (padrão `0.0.0.0`). Atrás do Nginx use `127.0.0.1`. |
+| `NODE_ENV` | `development`, `test` ou `production`. |
+| `LOG_LEVEL` | Nível do Pino (`info` por padrão; `debug` em desenvolvimento). Senhas, tokens e cabeçalhos de autenticação são sempre ocultados (`redact`). |
+| `TRUST_PROXY` | Número de proxies confiáveis. Padrão: `1` em produção, `0` nos demais. Exige `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` no Nginx; sem isso o rate limit trata todos como um único IP. |
+| `MONGO_URI`, `MONGO_DB_NAME` | Conexão com o MongoDB. |
+| `JWT_SECRET` | Chave de assinatura do JWT (mínimo 32 caracteres). |
+| `SMTP_*` | Envio de e-mail (todas ou nenhuma). |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base OTLP/HTTP; o código acrescenta `/v1/traces`. Vazio desativa a exportação. |
+| `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME` | Lidas pelo SDK do OpenTelemetry (chave do Datadog/New Relic só no `.env` do servidor). |
+
+Exemplo: `HOST=127.0.0.1 PORT=9090 npm run dev`.
+
+## Testes e cobertura
+
+```bash
+npm test            # testes de unidade e de segurança
+npm run coverage    # relatório de cobertura (src/services, middlewares, controllers)
+```
+
+Os testes de segurança (`src/tests/`) usam `supertest` e um MongoDB em memória (`mongodb-memory-server`), nunca o banco real, e substituem o envio de e-mail por uma caixa em memória. Na primeira execução o binário do MongoDB é baixado (~100 MB) e fica em cache.

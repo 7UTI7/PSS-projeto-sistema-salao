@@ -1,8 +1,8 @@
-import pino from 'pino';
+import pino, { type LoggerOptions } from 'pino';
 import { env } from './env.js';
 
-export const logger = pino({
-  level: env.NODE_ENV === 'development' ? 'debug' : 'info',
+export const loggerOptions: LoggerOptions = {
+  level: env.LOG_LEVEL ?? (env.NODE_ENV === 'development' ? 'debug' : 'info'),
   redact: {
     paths: [
       'password',
@@ -15,8 +15,14 @@ export const logger = pino({
       'authorization',
       'req.headers.authorization',
       'req.headers.cookie',
+      'req.body.password',
+      'req.body.newPassword',
+      'req.body.currentPassword',
+      'req.body.token',
       '*.password',
       '*.passwordHash',
+      '*.newPassword',
+      '*.currentPassword',
       '*.token',
       '*.accessToken',
       '*.refreshToken',
@@ -25,5 +31,9 @@ export const logger = pino({
     ],
     censor: '[REDACTED]',
   },
+};
+
+export const logger = pino({
+  ...loggerOptions,
   ...(env.NODE_ENV === 'development' ? { transport: { target: 'pino-pretty' } } : {}),
 });

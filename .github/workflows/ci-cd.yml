@@ -64,10 +64,17 @@ jobs:
       - name: Scan configured staging URL
         env:
           STAGING_URL: ${{ vars.STAGING_URL }}
-        run: wapiti -u "$STAGING_URL" -f json -o wapiti-report.json --scope domain
+        run: |
+          BASE="${STAGING_URL%/}"
+          wapiti -u "$BASE/" \
+            -s "$BASE/health" \
+            -s "$BASE/api/auth/login" \
+            -s "$BASE/api/auth/forgot-password" \
+            -s "$BASE/api/auth/reset-password" \
+            --scope domain --flush-session -f html -o wapiti-report
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: wapiti-dast-report
-          path: wapiti-report.json
+          path: wapiti-report/
           if-no-files-found: ignore

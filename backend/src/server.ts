@@ -10,8 +10,8 @@ async function startServer(): Promise<void> {
   ]);
   await connectDatabase();
 
-  const server = app.listen(env.PORT, () => {
-    logger.info({ port: env.PORT }, 'API disponível');
+  const server = app.listen(env.PORT, env.HOST, () => {
+    logger.info({ host: env.HOST, port: env.PORT }, 'API disponível');
   });
 
   const shutdown = async (signal: string): Promise<void> => {

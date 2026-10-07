@@ -6,10 +6,17 @@ import { logger } from './logger.js';
 
 let sdk: NodeSDK | undefined;
 
+// Aceita a base OTLP (padrão do Datadog/New Relic/Jaeger) ou a URL completa já usada antes.
+// Cabeçalhos de autenticação vêm de OTEL_EXPORTER_OTLP_HEADERS, lido pelo próprio SDK.
+function traceUrl(endpoint: string): string {
+  const base = endpoint.replace(/\/+$/, '');
+  return base.endsWith('/v1/traces') ? base : `${base}/v1/traces`;
+}
+
 export async function startInstrumentation(): Promise<void> {
   if (!env.OTEL_EXPORTER_OTLP_ENDPOINT) return;
   sdk = new NodeSDK({
-    traceExporter: new OTLPTraceExporter({ url: env.OTEL_EXPORTER_OTLP_ENDPOINT }),
+    traceExporter: new OTLPTraceExporter({ url: traceUrl(env.OTEL_EXPORTER_OTLP_ENDPOINT) }),
     instrumentations: [getNodeAutoInstrumentations()],
   });
   await sdk.start();
