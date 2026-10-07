@@ -1,10 +1,13 @@
 import 'dotenv/config';
+import { isIP } from 'node:net';
 import { z } from 'zod';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535),
   MONGO_URI: z.string().min(1),
+  MONGO_DB_NAME: z.string().trim().min(1).default('test'),
+  MONGO_DNS_SERVERS: z.string().optional(),
   JWT_SECRET: z.string().min(32),
   CORS_ORIGIN: z.string().default('*'),
   API_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
@@ -32,6 +35,12 @@ if (!parsed.success) {
 
 if (parsed.data.NODE_ENV === 'production' && parsed.data.CORS_ORIGIN === '*') {
   process.stderr.write('Em produção, CORS_ORIGIN deve listar origens explícitas.\n');
+  process.exit(1);
+}
+
+const mongoDnsServers = parsed.data.MONGO_DNS_SERVERS?.split(',').map((server) => server.trim());
+if (mongoDnsServers?.some((server) => isIP(server) === 0)) {
+  process.stderr.write('MONGO_DNS_SERVERS deve conter endereços IPv4/IPv6 separados por vírgula.\n');
   process.exit(1);
 }
 
