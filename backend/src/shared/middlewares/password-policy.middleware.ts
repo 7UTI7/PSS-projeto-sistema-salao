@@ -1,6 +1,6 @@
 // Bloqueia o acesso quando a senha precisa ser trocada (expirada há 90 dias).
 import type { RequestHandler } from 'express';
-import { PASSWORD_MAX_AGE_DAYS } from '../../modules/auth/user.model.js';
+import { PASSWORD_MAX_AGE_DAYS } from '../../models/user.model.js';
 import { AppError } from '../utils/app-error.js';
 
 const PASSWORD_MAX_AGE_MS = PASSWORD_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;

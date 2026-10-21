@@ -1,5 +1,5 @@
 // Tipos do usuário autenticado e do payload do JWT.
-import type { UserRole } from './user.model.js';
+import type { UserRole } from '../../models/user.model.js';
 
 export interface AuthenticatedUser {
   id: string;

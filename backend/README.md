@@ -1,6 +1,26 @@
 # Backend - Sistema Salão
 
-API em Node.js 20+, TypeScript 5, Express 5 e MongoDB Atlas/Mongoose 8. Organizada por módulos em `src/modules/` (`auth`, `transactions`, `categories`, `reports`, `imports`), cada um com `*.model.ts`, `*.controller.ts`, `*.service.ts` e `*.routes.ts` (MVC). Código comum em `src/shared/` (`middlewares`, `utils`, `types`), além de `config`, `scripts` e `tests`.
+API em Node.js 20+, TypeScript 5, Express 5 e MongoDB Atlas/Mongoose 8. Organizada em **camadas MVC** dentro de `src/`:
+
+```
+src/
+├── models/        # (M) Schemas Mongoose: user, category, transaction, import-batch
+├── controllers/   # (C) Camada HTTP: valida DTOs com Zod e devolve a resposta
+├── routes/        # Mapeia os verbos HTTP para os controllers (index.ts agrupa tudo em /api)
+├── modules/       # Regras de negócio por domínio (services e tipos)
+│   ├── auth/            auth.service.ts, auth.types.ts
+│   ├── categories/      category.service.ts
+│   ├── reports/         report.service.ts
+│   └── transactions/    transaction.service.ts, calculation.service.ts
+├── shared/        # middlewares (JWT, RBAC, rate limit, erros), utils e tipos globais
+├── config/        # env, database, logger, instrumentação OpenTelemetry
+├── scripts/       # bootstrap-admin
+├── tests/         # testes de integração (supertest + mongodb-memory-server)
+├── app.ts         # monta o Express
+└── server.ts      # ponto de entrada
+```
+
+O fluxo de uma requisição é sempre `routes → controller → service → model`: a rota só declara o endpoint e os middlewares, o controller não contém regra de negócio e o model é o único ponto de acesso à persistência.
 
 ## Execução local
 

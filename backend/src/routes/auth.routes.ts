@@ -1,17 +1,17 @@
 // Rotas de autenticação e gestão de usuários (/api/auth).
 import { Router } from 'express';
-import { AuthController } from './auth.controller.js';
-import { authMiddleware } from '../../shared/middlewares/auth.middleware.js';
+import { AuthController } from '../controllers/auth.controller.js';
+import { authMiddleware } from '../shared/middlewares/auth.middleware.js';
 import {
   emailVerificationRateLimiter,
   loginRateLimiter,
   passwordResetActionRateLimiter,
   passwordResetRequestRateLimiter,
   registrationRateLimiter,
-} from '../../shared/middlewares/rate-limiter.middleware.js';
-import { passwordPolicyMiddleware } from '../../shared/middlewares/password-policy.middleware.js';
-import { rbacMiddleware } from '../../shared/middlewares/rbac.middleware.js';
-import { asyncHandler } from '../../shared/utils/async-handler.js';
+} from '../shared/middlewares/rate-limiter.middleware.js';
+import { passwordPolicyMiddleware } from '../shared/middlewares/password-policy.middleware.js';
+import { rbacMiddleware } from '../shared/middlewares/rbac.middleware.js';
+import { asyncHandler } from '../shared/utils/async-handler.js';
 
 const router = Router();
 const controller = new AuthController();

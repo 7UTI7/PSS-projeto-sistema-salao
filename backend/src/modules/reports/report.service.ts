@@ -1,5 +1,5 @@
 // Gera os relatórios DRE e Fluxo de Caixa a partir dos lançamentos.
-import { Transaction } from '../transactions/transaction.model.js';
+import { Transaction } from '../../models/transaction.model.js';
 import { AppError } from '../../shared/utils/app-error.js';
 
 export interface DateRange {

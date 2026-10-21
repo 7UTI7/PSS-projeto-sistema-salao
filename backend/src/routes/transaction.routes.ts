@@ -1,9 +1,9 @@
 // Rotas CRUD de lançamentos financeiros (/api/transactions).
 import { Router } from 'express';
-import { TransactionController } from './transaction.controller.js';
-import { authMiddleware } from '../../shared/middlewares/auth.middleware.js';
-import { passwordPolicyMiddleware } from '../../shared/middlewares/password-policy.middleware.js';
-import { asyncHandler } from '../../shared/utils/async-handler.js';
+import { TransactionController } from '../controllers/transaction.controller.js';
+import { authMiddleware } from '../shared/middlewares/auth.middleware.js';
+import { passwordPolicyMiddleware } from '../shared/middlewares/password-policy.middleware.js';
+import { asyncHandler } from '../shared/utils/async-handler.js';
 
 const router = Router();
 const controller = new TransactionController();

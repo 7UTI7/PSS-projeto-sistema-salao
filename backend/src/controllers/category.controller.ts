@@ -1,8 +1,8 @@
 // Camada HTTP das categorias: valida a entrada e chama o CategoryService.
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { CategoryService } from './category.service.js';
-import { AppError } from '../../shared/utils/app-error.js';
+import { CategoryService } from '../modules/categories/category.service.js';
+import { AppError } from '../shared/utils/app-error.js';
 
 const categorySchema = z.object({
   name: z.string().trim().min(1).max(100),

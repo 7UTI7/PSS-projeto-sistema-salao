@@ -1,5 +1,5 @@
 // Regras de negócio do catálogo de categorias e validação de categoria nos lançamentos.
-import { Category, type CategoryFields, type CategoryKind } from './category.model.js';
+import { Category, type CategoryFields, type CategoryKind } from '../../models/category.model.js';
 import { AppError } from '../../shared/utils/app-error.js';
 
 export interface CategoryInput {

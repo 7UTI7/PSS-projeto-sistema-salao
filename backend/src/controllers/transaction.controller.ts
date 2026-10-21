@@ -1,8 +1,8 @@
 // Camada HTTP dos lançamentos: valida a entrada e chama o TransactionService.
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { TransactionService } from './transaction.service.js';
-import { AppError } from '../../shared/utils/app-error.js';
+import { TransactionService } from '../modules/transactions/transaction.service.js';
+import { AppError } from '../shared/utils/app-error.js';
 
 const transactionSchema = z.object({
   type: z.enum(['receita', 'despesa']),

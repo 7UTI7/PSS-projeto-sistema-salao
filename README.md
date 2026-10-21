@@ -38,12 +38,13 @@ PSS-projeto-sistema-salao/
 │
 ├── backend/           # API RESTful (Node.js 20 + TypeScript + Express + MongoDB)
 │   ├── src/
+│   │   ├── models/        # (M) Schemas Mongoose: user, category, transaction, import-batch
+│   │   ├── controllers/   # (C) Camada HTTP e validação dos DTOs com Zod
+│   │   ├── routes/        # Endpoints REST, agrupados em /api por routes/index.ts
+│   │   ├── modules/       # Regras de negócio por domínio (services e tipos)
+│   │   ├── shared/        # Middlewares (JWT, RBAC, erros), utils e tipos globais
 │   │   ├── config/        # Ambiente, MongoDB, logs e instrumentação
-│   │   ├── controllers/   # HTTP e validação dos DTOs
-│   │   ├── models/        # Schemas Mongoose
-│   │   ├── services/      # Regras de autenticação e finanças
-│   │   ├── routes/        # Rotas modulares
-│   │   └── middlewares/   # JWT, RBAC e tratamento de erros
+│   │   └── tests/         # Testes de integração (supertest + Mongo em memória)
 │   └── DEPLOYMENT.md      # Guia de implantação VPS
 │
 ├── agents/            # Documentação e scripts dos agentes de IA

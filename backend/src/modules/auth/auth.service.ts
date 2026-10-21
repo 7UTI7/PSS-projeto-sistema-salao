@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
-import { BCRYPT_ROUNDS, PASSWORD_MAX_AGE_DAYS, User, type UserRole } from './user.model.js';
+import { BCRYPT_ROUNDS, PASSWORD_MAX_AGE_DAYS, User, type UserRole } from '../../models/user.model.js';
 import { AppError } from '../../shared/utils/app-error.js';
 import { EmailService } from '../../shared/utils/email.service.js';
 

@@ -2,7 +2,7 @@
 import bcrypt from 'bcrypt';
 import { connectDatabase, disconnectDatabase } from '../config/database.js';
 import { env } from '../config/env.js';
-import { BCRYPT_ROUNDS, User } from '../modules/auth/user.model.js';
+import { BCRYPT_ROUNDS, User } from '../models/user.model.js';
 
 async function bootstrapAdmin(): Promise<void> {
   const name = env.BOOTSTRAP_ADMIN_NAME;

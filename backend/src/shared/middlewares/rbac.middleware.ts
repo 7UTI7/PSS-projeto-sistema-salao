@@ -1,6 +1,6 @@
 // Controle de acesso por perfil (admin/colaborador).
 import type { RequestHandler } from 'express';
-import type { UserRole } from '../../modules/auth/user.model.js';
+import type { UserRole } from '../../models/user.model.js';
 import { AppError } from '../utils/app-error.js';
 
 export function rbacMiddleware(...allowedRoles: UserRole[]): RequestHandler {

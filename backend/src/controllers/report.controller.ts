@@ -1,8 +1,8 @@
 // Camada HTTP dos relatórios: valida o período e chama o ReportService.
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { ReportService } from './report.service.js';
-import { AppError } from '../../shared/utils/app-error.js';
+import { ReportService } from '../modules/reports/report.service.js';
+import { AppError } from '../shared/utils/app-error.js';
 
 const dateQuerySchema = z.object({ start: z.string().datetime(), end: z.string().datetime() });
 

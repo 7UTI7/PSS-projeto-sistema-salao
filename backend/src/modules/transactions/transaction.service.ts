@@ -1,5 +1,5 @@
 // Regras de negócio dos lançamentos: listar, criar, editar, liquidar e excluir.
-import { Transaction, type Professional, type TransactionFields } from './transaction.model.js';
+import { Transaction, type Professional, type TransactionFields } from '../../models/transaction.model.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { AppError } from '../../shared/utils/app-error.js';
 import { CalculationService } from './calculation.service.js';

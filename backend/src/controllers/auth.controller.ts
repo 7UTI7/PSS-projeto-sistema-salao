@@ -1,8 +1,8 @@
 // Camada HTTP de autenticação e usuários: valida a entrada e chama o AuthService.
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { AuthService } from './auth.service.js';
-import { AppError } from '../../shared/utils/app-error.js';
+import { AuthService } from '../modules/auth/auth.service.js';
+import { AppError } from '../shared/utils/app-error.js';
 
 const passwordSchema = z.string().min(12).max(72)
   .refine((password) => Buffer.byteLength(password, 'utf8') <= 72, 'Senha excede 72 bytes suportados pelo bcrypt.');

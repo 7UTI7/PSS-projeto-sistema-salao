@@ -1,10 +1,10 @@
 // Rotas CRUD de categorias (/api/categories); escrita só para admin.
 import { Router } from 'express';
-import { CategoryController } from './category.controller.js';
-import { authMiddleware } from '../../shared/middlewares/auth.middleware.js';
-import { passwordPolicyMiddleware } from '../../shared/middlewares/password-policy.middleware.js';
-import { rbacMiddleware } from '../../shared/middlewares/rbac.middleware.js';
-import { asyncHandler } from '../../shared/utils/async-handler.js';
+import { CategoryController } from '../controllers/category.controller.js';
+import { authMiddleware } from '../shared/middlewares/auth.middleware.js';
+import { passwordPolicyMiddleware } from '../shared/middlewares/password-policy.middleware.js';
+import { rbacMiddleware } from '../shared/middlewares/rbac.middleware.js';
+import { asyncHandler } from '../shared/utils/async-handler.js';
 
 const router = Router();
 const controller = new CategoryController();

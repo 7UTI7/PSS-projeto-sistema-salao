@@ -11,7 +11,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
-      include: ['src/modules/**/*.ts', 'src/shared/middlewares/**/*.ts'],
+      include: ['src/controllers/**/*.ts', 'src/models/**/*.ts', 'src/routes/**/*.ts', 'src/modules/**/*.ts', 'src/shared/middlewares/**/*.ts'],
       exclude: ['src/**/*.test.ts'],
       thresholds: { statements: 60, branches: 60, functions: 60, lines: 60 },
     },
