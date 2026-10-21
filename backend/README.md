@@ -1,6 +1,6 @@
 # Backend - Sistema Salão
 
-API em Node.js 20+, TypeScript 5, Express 5 e MongoDB Atlas/Mongoose 8. Os módulos ficam separados por responsabilidade em `src/`: `config`, `models`, `controllers`, `services`, `middlewares`, `routes`, `utils` e `scripts`.
+API em Node.js 20+, TypeScript 5, Express 5 e MongoDB Atlas/Mongoose 8. Organizada por módulos em `src/modules/` (`auth`, `transactions`, `categories`, `reports`, `imports`), cada um com `*.model.ts`, `*.controller.ts`, `*.service.ts` e `*.routes.ts` (MVC). Código comum em `src/shared/` (`middlewares`, `utils`, `types`), além de `config`, `scripts` e `tests`.
 
 ## Execução local
 
@@ -116,7 +116,7 @@ Exemplo: `HOST=127.0.0.1 PORT=9090 npm run dev`.
 
 ```bash
 npm test            # testes de unidade e de segurança
-npm run coverage    # relatório de cobertura (src/services, middlewares, controllers)
+npm run coverage    # relatório de cobertura (src/modules e src/shared/middlewares)
 ```
 
 Os testes de segurança (`src/tests/`) usam `supertest` e um MongoDB em memória (`mongodb-memory-server`), nunca o banco real, e substituem o envio de e-mail por uma caixa em memória. Na primeira execução o binário do MongoDB é baixado (~100 MB) e fica em cache.

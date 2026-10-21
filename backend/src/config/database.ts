@@ -1,3 +1,4 @@
+// Conexão com o MongoDB via Mongoose.
 import mongoose from 'mongoose';
 import { setServers } from 'node:dns';
 import { env } from './env.js';

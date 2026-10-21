@@ -1,3 +1,4 @@
+// Configuração dos testes e da cobertura mínima.
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
@@ -10,7 +11,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
-      include: ['src/services/**/*.ts', 'src/middlewares/**/*.ts', 'src/controllers/**/*.ts'],
+      include: ['src/modules/**/*.ts', 'src/shared/middlewares/**/*.ts'],
       exclude: ['src/**/*.test.ts'],
       thresholds: { statements: 60, branches: 60, functions: 60, lines: 60 },
     },

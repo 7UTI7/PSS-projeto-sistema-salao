@@ -1,9 +1,10 @@
+// Utilitários de teste: banco em memória, criação de usuários e tokens.
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { afterAll, beforeAll, beforeEach } from 'vitest';
-import { BCRYPT_ROUNDS, User, type UserRole } from '../models/User.js';
+import { BCRYPT_ROUNDS, User, type UserRole } from '../modules/auth/user.model.js';
 import { mailbox } from './mailbox.js';
 
 export const STRONG_PASSWORD = 'SenhaForte#2026';

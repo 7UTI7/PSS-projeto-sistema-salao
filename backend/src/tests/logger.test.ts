@@ -1,3 +1,4 @@
+// Testes de que o logger oculta dados sensíveis.
 import { Writable } from 'node:stream';
 import pino from 'pino';
 import { describe, expect, it } from 'vitest';

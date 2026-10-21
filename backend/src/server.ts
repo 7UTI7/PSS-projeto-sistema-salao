@@ -1,3 +1,4 @@
+// Ponto de entrada: conecta ao banco, sobe o servidor HTTP e trata o encerramento.
 import { startInstrumentation, stopInstrumentation } from './config/instrumentation.js';
 import { logger } from './config/logger.js';
 

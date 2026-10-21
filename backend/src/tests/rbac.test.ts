@@ -1,8 +1,9 @@
+// Testes de permissões por perfil (admin x colaborador).
 import type { Types } from 'mongoose';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { app } from '../app.js';
-import { Transaction } from '../models/Transaction.js';
+import { Transaction } from '../modules/transactions/transaction.model.js';
 import { createUser, tokenFor, useTestDatabase } from './helpers.js';
 
 useTestDatabase();

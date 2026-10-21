@@ -1,3 +1,4 @@
+// Logger Pino estruturado, com redação de dados sensíveis.
 import pino, { type LoggerOptions } from 'pino';
 import { env } from './env.js';
 

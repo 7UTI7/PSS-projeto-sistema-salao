@@ -1,13 +1,14 @@
+// Configura o Express: segurança (Helmet, CORS), parsers, rotas e tratamento de erros.
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
-import { apiRateLimiter } from './middlewares/rateLimiter.js';
-import { errorHandler } from './middlewares/errorHandler.js';
+import { apiRateLimiter } from './shared/middlewares/rate-limiter.middleware.js';
+import { errorHandler } from './shared/middlewares/error-handler.middleware.js';
 import routes from './routes/index.js';
-import { AppError } from './utils/AppError.js';
+import { AppError } from './shared/utils/app-error.js';
 
 export const app = express();
 

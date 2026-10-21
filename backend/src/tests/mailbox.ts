@@ -1,3 +1,4 @@
+// Caixa de e-mails em memória usada nos testes.
 export interface SentEmail {
   to: string;
   subject: string;

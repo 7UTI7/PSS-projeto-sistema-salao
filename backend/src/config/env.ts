@@ -1,3 +1,4 @@
+// Carrega e valida as variáveis de ambiente com Zod (falha na inicialização se inválidas).
 import 'dotenv/config';
 import { isIP } from 'node:net';
 import { z } from 'zod';

@@ -1,3 +1,4 @@
+// Regras de lint do projeto.
 import eslint from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';

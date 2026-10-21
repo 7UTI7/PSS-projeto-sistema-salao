@@ -1,8 +1,9 @@
+// Testes de cadastro, login, tokens, reset de senha e política de 90 dias.
 import bcrypt from 'bcrypt';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { app } from '../app.js';
-import { User } from '../models/User.js';
+import { User } from '../modules/auth/user.model.js';
 import { createUser, daysAgo, STRONG_PASSWORD, tokenFor, useTestDatabase } from './helpers.js';
 import { mailbox, tokenFromLastEmail } from './mailbox.js';
 

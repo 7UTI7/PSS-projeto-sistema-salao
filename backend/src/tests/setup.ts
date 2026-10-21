@@ -1,3 +1,4 @@
+// Setup global dos testes: variáveis de ambiente e mock do envio de e-mail.
 import { vi } from 'vitest';
 import { mailbox } from './mailbox.js';
 
@@ -14,7 +15,7 @@ for (const key of ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP
 }
 
 // Nenhum e-mail real é enviado: os links ficam na caixa em memória.
-vi.mock('../utils/emailService.js', () => ({
+vi.mock('../shared/utils/email.service.js', () => ({
   EmailService: class {
     async sendActionLink(to: string, subject: string, actionUrl: string): Promise<void> {
       mailbox.push({ to, subject, actionUrl });
