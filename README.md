@@ -70,7 +70,7 @@ PSS-projeto-sistema-salao/
 - **Zod** (DTOs e variáveis de ambiente) + **Pino** (logs JSON com redação)
 - **OpenTelemetry** opcional para exportação de traces via OTLP
 
-Para instalar e executar a API localmente, consulte [backend/README.md](backend/README.md). A política de divulgação responsável está em [SECURITY.md](SECURITY.md).
+Para instalar e executar a aplicação mobile, consulte [frontend/README.md](frontend/README.md). Para a API, consulte [backend/README.md](backend/README.md). A política de divulgação responsável está em [SECURITY.md](SECURITY.md).
 
 ---
 
