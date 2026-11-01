@@ -9,13 +9,14 @@ export type AuthStackParamList = {
 export type MainTabParamList = {
   Dashboard: undefined;
   Transactions: undefined;
-  NewTransaction: { transactionId?: string } | undefined;
+  Inventory: undefined;
   Reports: undefined;
-  Settings: undefined;
 };
 
 export type RootStackParamList = {
   Auth: NavigatorScreenParams<AuthStackParamList>;
   Main: NavigatorScreenParams<MainTabParamList>;
+  NewTransaction: { transactionId?: string } | undefined;
+  Settings: undefined;
   ChangePasswordMandatory: undefined;
 };

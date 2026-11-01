@@ -9,12 +9,15 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/types';
 import { authService } from '../../services/auth.service';
 import { useAuthStore } from '../../store/authStore';
 import { getApiErrorMessage } from '../../services/api';
+import { colors, typography, borderRadius, shadows } from '../../theme/theme';
+import { Button } from '../../components/ui/Button';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -42,57 +45,91 @@ export default function LoginScreen({ navigation }: Props) {
     }
   }
 
+  // Permite visualizar todas as telas sem depender do backend
+  function handleEnterDemo() {
+    setAuth('demo-token-123', {
+      _id: 'demo-user-id',
+      name: 'Nicolle Neris',
+      email: 'nicolle@studio.com',
+      role: 'admin',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      <View style={styles.card}>
-        <Text style={styles.title}>Nicolle Neris Studio</Text>
-        <Text style={styles.subtitle}>Gestão Financeira & Retaguarda</Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.card}>
+          <View style={styles.brandContainer}>
+            <View style={styles.logoPill}>
+              <Text style={styles.logoPillText}>N</Text>
+            </View>
+            <Text style={styles.title}>Nicolle Neris Studio</Text>
+            <Text style={styles.studioLabel}>ATELIER DE BELEZA</Text>
+            <Text style={styles.subtitle}>Gestão Financeira & Retaguarda</Text>
+          </View>
 
-        <View style={styles.form}>
-          <Text style={styles.label}>E-mail</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="seu.email@exemplo.com"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            editable={!loading}
-          />
+          <View style={styles.form}>
+            <Text style={styles.label}>E-mail</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="seu.email@exemplo.com"
+              placeholderTextColor={colors.graphiteMuted}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              editable={!loading}
+            />
 
-          <Text style={styles.label}>Senha</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Sua senha"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            editable={!loading}
-          />
+            <Text style={styles.label}>Senha</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Sua senha"
+              placeholderTextColor={colors.graphiteMuted}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              editable={!loading}
+            />
 
-          <TouchableOpacity
-            style={styles.forgotBtn}
-            onPress={() => navigation.navigate('ForgotPassword', { email })}
-          >
-            <Text style={styles.forgotText}>Esqueceu a senha?</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.forgotBtn}
+              onPress={() => navigation.navigate('ForgotPassword', { email })}
+            >
+              <Text style={styles.forgotText}>Esqueceu a senha?</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.loginBtn, loading && styles.loginBtnDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.loginBtnText}>Entrar</Text>
-            )}
-          </TouchableOpacity>
+            <Button
+              title="Entrar"
+              variant="primary"
+              loading={loading}
+              onPress={handleLogin}
+              style={styles.submitBtn}
+            />
+
+            <View style={styles.dividerContainer}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>OU MODO VISUAL</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <Button
+              title="Ver Telas (Modo Demonstração)"
+              variant="secondary"
+              onPress={handleEnterDemo}
+            />
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -100,72 +137,107 @@ export default function LoginScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: colors.background,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
+    padding: 24,
   },
   card: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 5,
+    backgroundColor: '#FFFFFF',
+    borderRadius: borderRadius.xl,
+    padding: 28,
+    borderWidth: 1,
+    borderColor: colors.borderWhisper,
+    ...shadows.card,
+  },
+  brandContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  logoPill: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  logoPillText: {
+    fontFamily: typography.fonts.headlineBold,
+    fontSize: 24,
+    color: '#FFFFFF',
   },
   title: {
+    fontFamily: typography.fonts.headline,
     fontSize: 24,
-    fontWeight: '700',
-    color: '#f8fafc',
+    color: colors.graphiteText,
     textAlign: 'center',
   },
+  studioLabel: {
+    fontFamily: typography.fonts.bodyBold,
+    fontSize: 10,
+    letterSpacing: 2,
+    color: colors.violetRoyal,
+    marginTop: 3,
+  },
   subtitle: {
-    fontSize: 14,
-    color: '#94a3b8',
+    fontFamily: typography.fonts.body,
+    fontSize: 12,
+    color: colors.graphiteMuted,
     textAlign: 'center',
-    marginBottom: 24,
     marginTop: 4,
   },
   form: {
     width: '100%',
   },
   label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#cbd5e1',
-    marginBottom: 6,
+    fontFamily: typography.fonts.bodySemiBold,
+    fontSize: 12,
+    color: colors.graphiteText,
+    marginBottom: 5,
   },
   input: {
-    backgroundColor: '#0f172a',
-    borderRadius: 8,
+    backgroundColor: colors.surfaceCanvas,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: '#334155',
-    color: '#f8fafc',
+    borderColor: colors.borderWhisper,
+    color: colors.graphiteText,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    marginBottom: 16,
+    paddingVertical: 11,
+    fontFamily: typography.fonts.body,
+    fontSize: 14,
+    marginBottom: 14,
   },
   forgotBtn: {
     alignSelf: 'flex-end',
-    marginBottom: 20,
+    marginBottom: 18,
   },
   forgotText: {
-    color: '#38bdf8',
-    fontSize: 13,
+    fontFamily: typography.fonts.bodyMedium,
+    color: colors.primary,
+    fontSize: 12,
   },
-  loginBtn: {
-    backgroundColor: '#0284c7',
-    borderRadius: 8,
-    paddingVertical: 14,
+  submitBtn: {
+    marginBottom: 12,
+  },
+  dividerContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginVertical: 14,
   },
-  loginBtnDisabled: {
-    opacity: 0.6,
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.borderWhisper,
   },
-  loginBtnText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
+  dividerText: {
+    fontFamily: typography.fonts.bodySemiBold,
+    fontSize: 10,
+    color: colors.graphiteMuted,
+    letterSpacing: 1,
+    marginHorizontal: 10,
   },
 });

@@ -5,13 +5,16 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/types';
 import { authService } from '../../services/auth.service';
 import { getApiErrorMessage } from '../../services/api';
+import { colors, typography, borderRadius, shadows } from '../../theme/theme';
+import { Button } from '../../components/ui/Button';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'ForgotPassword'>;
 
@@ -40,7 +43,10 @@ export default function ForgotPasswordScreen({ route, navigation }: Props) {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.container}
+    >
       <View style={styles.card}>
         <Text style={styles.title}>Recuperar Senha</Text>
         <Text style={styles.subtitle}>
@@ -51,6 +57,7 @@ export default function ForgotPasswordScreen({ route, navigation }: Props) {
         <TextInput
           style={styles.input}
           placeholder="seu.email@exemplo.com"
+          placeholderTextColor={colors.graphiteMuted}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -58,17 +65,13 @@ export default function ForgotPasswordScreen({ route, navigation }: Props) {
           editable={!loading}
         />
 
-        <TouchableOpacity
-          style={[styles.btn, loading && styles.btnDisabled]}
+        <Button
+          title="Enviar link de recuperação"
+          variant="primary"
+          loading={loading}
           onPress={handleResetRequest}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.btnText}>Enviar link de recuperação</Text>
-          )}
-        </TouchableOpacity>
+          style={styles.btn}
+        />
 
         <TouchableOpacity
           style={styles.backBtn}
@@ -77,73 +80,67 @@ export default function ForgotPasswordScreen({ route, navigation }: Props) {
           <Text style={styles.backText}>Voltar para o Login</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0f172a',
+    backgroundColor: colors.background,
     justifyContent: 'center',
-    padding: 20,
-  },
-  card: {
-    backgroundColor: '#1e293b',
-    borderRadius: 16,
     padding: 24,
   },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: borderRadius.xl,
+    padding: 28,
+    borderWidth: 1,
+    borderColor: colors.borderWhisper,
+    ...shadows.card,
+  },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#f8fafc',
+    fontFamily: typography.fonts.headlineBold,
+    fontSize: 24,
+    color: colors.graphiteText,
     textAlign: 'center',
   },
   subtitle: {
+    fontFamily: typography.fonts.body,
     fontSize: 13,
-    color: '#94a3b8',
+    color: colors.graphiteMuted,
     textAlign: 'center',
-    marginVertical: 12,
-    lineHeight: 18,
+    marginVertical: 14,
+    lineHeight: 20,
   },
   label: {
+    fontFamily: typography.fonts.bodySemiBold,
     fontSize: 13,
-    fontWeight: '600',
-    color: '#cbd5e1',
+    color: colors.graphiteText,
     marginBottom: 6,
-    marginTop: 8,
   },
   input: {
-    backgroundColor: '#0f172a',
-    borderRadius: 8,
+    backgroundColor: colors.surfaceCanvas,
+    borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor: '#334155',
-    color: '#f8fafc',
+    borderColor: colors.borderWhisper,
+    color: colors.graphiteText,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 15,
+    fontFamily: typography.fonts.body,
+    fontSize: 14,
     marginBottom: 20,
   },
   btn: {
-    backgroundColor: '#0284c7',
-    borderRadius: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  btnText: {
-    color: '#ffffff',
-    fontSize: 15,
-    fontWeight: '600',
+    marginBottom: 12,
   },
   backBtn: {
     alignSelf: 'center',
-    marginTop: 18,
+    marginTop: 12,
   },
   backText: {
-    color: '#38bdf8',
+    fontFamily: typography.fonts.bodySemiBold,
+    color: colors.primary,
     fontSize: 14,
   },
 });
