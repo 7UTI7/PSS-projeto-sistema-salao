@@ -22,7 +22,7 @@ import {
 } from '../../hooks/useTransactions';
 import { useAuthStore } from '../../store/authStore';
 import { getApiErrorMessage } from '../../services/api';
-import { DEFAULT_COMMISSION_RATE, SUGGESTED_PAYMENT_FEE_RATES } from '../../config/studio.config';
+import { DEFAULT_COMMISSION_RATE } from '../../config/studio.config';
 import { formatCurrency, formatPercent, parseAmountInput } from '../../utils/formatters';
 import { costTypeLabels, paymentMethodLabels, transactionStatusLabels } from '../../utils/labels';
 import {
@@ -94,7 +94,7 @@ function formFromTransaction(transaction: Transaction): FormState {
     discount: transaction.discountAmount ? String(transaction.discountAmount) : '',
     description: transaction.description,
     category: transaction.category,
-    professional: transaction.professional,
+    professional: transaction.professional ?? 'Nicolle',
     paymentMethod: transaction.paymentMethod,
     feeRatePercent: asPercent(transaction.feeAmount),
     commissionPercent: asPercent(transaction.commissionAmount),
@@ -151,14 +151,11 @@ export default function NewTransactionScreen() {
     setDraft({ ...form, ...changes });
   }
 
-  /** Taxa sugerida pela forma de pagamento, só em lançamento novo e só para receita. */
+  // A taxa não é mais sugerida aqui: campo vazio significa "usar o padrão da forma de
+  // pagamento", que é resolvido no servidor. Antes o app preenchia 0% para Pix, o que
+  // fazia parecer que a taxa digitada à mão tinha vindo de alguma configuração.
   function handleSelectPaymentMethod(method: PaymentMethod) {
-    const suggested = SUGGESTED_PAYMENT_FEE_RATES[method];
-    const shouldSuggest = !isEditing && form.type === 'receita' && suggested !== undefined;
-    update({
-      paymentMethod: method,
-      ...(shouldSuggest ? { feeRatePercent: String(suggested * 100) } : {}),
-    });
+    update({ paymentMethod: method });
   }
 
   // A categoria guardada pode não valer para o tipo atual (a dona alternou receita ->
@@ -213,14 +210,18 @@ export default function NewTransactionScreen() {
       description: description.trim(),
       grossAmount,
       discountAmount,
-      paymentFeeRate: type === 'receita' ? feeRate : 0,
+      // Campo de taxa vazio: não manda nada e o servidor aplica o padrão da forma de
+      // pagamento. Despesa nunca tem taxa nem comissão.
+      ...(type === 'receita' && form.feeRatePercent.trim() !== ''
+        ? { paymentFeeRate: feeRate }
+        : type === 'despesa'
+          ? { paymentFeeRate: 0 }
+          : {}),
       professionalCommissionRate: type === 'receita' ? commissionRate : 0,
       category,
       paymentMethod,
       occurredAt: occurredAtIso,
       status,
-      // Edição preserva a origem; lançamento novo é sempre manual.
-      origin: existing?.origin ?? 'manual',
       ...(isAdmin ? { professional } : {}),
       ...(type === 'despesa' ? { costType } : {}),
       // A API preenche settledAt com a data de hoje quando o status é liquidada e
@@ -530,7 +531,8 @@ export default function NewTransactionScreen() {
               placeholderTextColor={colors.graphiteMuted}
             />
             <Text style={styles.fieldHelp}>
-              Sugestões por forma de pagamento ficam em src/config/studio.config.ts.
+              Deixe a taxa em branco para usar a padrão da forma de pagamento. O cálculo
+              final é sempre do servidor.
             </Text>
           </View>
         ) : null}

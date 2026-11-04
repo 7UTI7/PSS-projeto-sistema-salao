@@ -14,7 +14,12 @@ export interface TransactionFields {
   grossAmount: number;
   discountAmount: number;
   feeAmount: number;
-  professional: Professional;
+  /**
+   * Quem atendeu. Opcional porque o extrato da InfinitePay não informa: um Pix recebido
+   * não diz a qual atendimento pertence. Atribuir à titular por padrão criava comissão e
+   * divisão de receita em cima de um palpite.
+   */
+  professional?: Professional;
   commissionAmount: number;
   studioNetProfit: number;
   netAmount: number;
@@ -44,7 +49,7 @@ const transactionSchema = new Schema<TransactionFields>(
     grossAmount: { type: Number, required: true, min: 0 },
     discountAmount: { type: Number, default: 0, min: 0 },
     feeAmount: { type: Number, default: 0, min: 0 },
-    professional: { type: String, enum: ['Nicolle', 'Stefany'], required: true, index: true },
+    professional: { type: String, enum: ['Nicolle', 'Stefany'], index: true },
     commissionAmount: { type: Number, default: 0, min: 0 },
     studioNetProfit: { type: Number, required: true },
     netAmount: { type: Number, required: true },

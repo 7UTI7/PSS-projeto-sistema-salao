@@ -26,7 +26,7 @@
 // mesmo dinheiro visto em dois momentos. Importar as duas origens para um mês que se
 // sobrepõe dobra o faturamento — quem avisa é o ImportService, comparando os períodos.
 import { AppError } from '../../shared/utils/app-error.js';
-import type { PaymentMethod, Professional, TransactionType } from '../../models/transaction.model.js';
+import type { PaymentMethod, TransactionType } from '../../models/transaction.model.js';
 import type {
   AsideTotal,
   ParseOptions,
@@ -43,12 +43,6 @@ export const CARD_SALES_CATEGORY = 'Vendas na maquininha';
 export const PIX_EXPENSE_CATEGORY = 'Pagamentos Pix';
 export const OTHER_INCOME_CATEGORY = 'Outras entradas';
 export const OTHER_EXPENSE_CATEGORY = 'Outras saídas';
-
-/**
- * O extrato é da conta do salão e não informa quem atendeu, então o lançamento fica com a
- * titular. A atribuição por profissional — e portanto a comissão — vem do Booksy.
- */
-const ACCOUNT_OWNER: Professional = 'Nicolle';
 
 const MONTHS: ReadonlyMap<string, number> = new Map([
   ['jan', 0], ['fev', 1], ['mar', 2], ['abr', 3], ['mai', 4], ['jun', 5],
@@ -357,7 +351,6 @@ function toParsedRow(movement: Movement, used: Map<string, number>): ParsedRow {
     type,
     description: describe(movement, isCardDeposit),
     category,
-    professional: ACCOUNT_OWNER,
     grossAmount: Math.abs(movement.amount),
     discountAmount: 0,
     // O repasse da maquininha já vem líquido e o Pix não tem tarifa: não há taxa a aplicar.

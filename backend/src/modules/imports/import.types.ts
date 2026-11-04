@@ -18,7 +18,8 @@ export interface ParsedRow {
   type: TransactionType;
   description: string;
   category: string;
-  professional: Professional;
+  /** Ausente quando a origem não informa quem atendeu (é o caso do extrato). */
+  professional?: Professional;
   grossAmount: number;
   discountAmount: number;
   paymentFeeRate: number;

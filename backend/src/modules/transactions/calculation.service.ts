@@ -1,4 +1,23 @@
 // Cálculo financeiro de uma receita em 5 passos, com arredondamento em centavos.
+import type { PaymentMethod } from '../../models/transaction.model.js';
+
+/**
+ * Taxa por forma de pagamento aplicada quando o lançamento não informa a sua.
+ *
+ * Mora no servidor de propósito. A ordem de precedência é: taxa real do arquivo, quando a
+ * origem informa (é o caso da coluna "Taxa" do Booksy); senão esta tabela; e nada fica
+ * fixo no aplicativo. O extrato da InfinitePay não traz taxa em coluna nenhuma — o
+ * repasse da maquininha já chega líquido —, então as linhas dele ficam com zero e a taxa
+ * do cartão aparece deduzida na conciliação.
+ */
+export const DEFAULT_PAYMENT_FEE_RATES: Record<PaymentMethod, number> = {
+  pix: 0,
+  dinheiro: 0,
+  debito: 0.0139,
+  credito: 0.0399,
+  nao_informado: 0,
+};
+
 export interface CalculationInput {
   grossAmount: number;
   discountAmount: number;

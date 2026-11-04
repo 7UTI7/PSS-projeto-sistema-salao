@@ -110,11 +110,16 @@ export default function TransactionsScreen() {
     const isIncome = item.type === 'receita';
     const amount = isIncome ? item.grossAmount - item.discountAmount : item.grossAmount;
     const isCancelled = item.status === 'cancelada';
+    // Lançamento importado é o espelho de uma linha do arquivo: editar faz o total
+    // divergir da origem, e excluir deixa o externalId gravado, o que impede a linha de
+    // voltar no reenvio. Quem desfaz é o "Desfazer este lote", na tela de Importar.
+    const isImported = item.origin !== 'manual';
 
     return (
       <TouchableOpacity
         style={[styles.transactionCard, isCancelled && styles.cardCancelled]}
-        activeOpacity={0.85}
+        activeOpacity={isImported ? 1 : 0.85}
+        disabled={isImported}
         onPress={() => navigation.navigate('NewTransaction', { transactionId: item._id })}
       >
         <View style={styles.cardHeader}>
@@ -134,7 +139,9 @@ export default function TransactionsScreen() {
             </Text>
 
             <View style={styles.metaRow}>
-              <Text style={styles.professionalText}>Por: {item.professional}</Text>
+              <Text style={styles.professionalText}>
+                Por: {item.professional ?? 'não atribuído'}
+              </Text>
               {item.origin !== 'manual' ? (
                 <View style={styles.originPill}>
                   <Text style={styles.originText}>{transactionOriginLabels[item.origin]}</Text>
@@ -182,34 +189,45 @@ export default function TransactionsScreen() {
         ) : null}
 
         <View style={styles.actionRow}>
-          {item.status === 'pendente' ? (
-            <TouchableOpacity
-              style={styles.actionBtn}
-              activeOpacity={0.7}
-              onPress={() => handleSettle(item)}
-            >
-              <Ionicons name="checkmark-circle-outline" size={15} color={colors.statusSuccess} />
-              <Text style={[styles.actionText, { color: colors.statusSuccess }]}>Liquidar</Text>
-            </TouchableOpacity>
-          ) : null}
+          {isImported ? (
+            <View style={styles.actionBtn}>
+              <Ionicons name="lock-closed-outline" size={15} color={colors.graphiteMuted} />
+              <Text style={[styles.actionText, { color: colors.graphiteMuted }]}>
+                Importado · desfaça o lote em Importar
+              </Text>
+            </View>
+          ) : (
+            <>
+              {item.status === 'pendente' ? (
+                <TouchableOpacity
+                  style={styles.actionBtn}
+                  activeOpacity={0.7}
+                  onPress={() => handleSettle(item)}
+                >
+                  <Ionicons name="checkmark-circle-outline" size={15} color={colors.statusSuccess} />
+                  <Text style={[styles.actionText, { color: colors.statusSuccess }]}>Liquidar</Text>
+                </TouchableOpacity>
+              ) : null}
 
-          <TouchableOpacity
-            style={styles.actionBtn}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('NewTransaction', { transactionId: item._id })}
-          >
-            <Ionicons name="create-outline" size={15} color={colors.primary} />
-            <Text style={[styles.actionText, { color: colors.primary }]}>Editar</Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionBtn}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('NewTransaction', { transactionId: item._id })}
+              >
+                <Ionicons name="create-outline" size={15} color={colors.primary} />
+                <Text style={[styles.actionText, { color: colors.primary }]}>Editar</Text>
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.actionBtn}
-            activeOpacity={0.7}
-            onPress={() => handleDelete(item)}
-          >
-            <Ionicons name="trash-outline" size={15} color={colors.statusError} />
-            <Text style={[styles.actionText, { color: colors.statusError }]}>Excluir</Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.actionBtn}
+                activeOpacity={0.7}
+                onPress={() => handleDelete(item)}
+              >
+                <Ionicons name="trash-outline" size={15} color={colors.statusError} />
+                <Text style={[styles.actionText, { color: colors.statusError }]}>Excluir</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </TouchableOpacity>
     );

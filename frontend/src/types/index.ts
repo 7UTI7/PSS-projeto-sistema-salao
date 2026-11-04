@@ -50,7 +50,8 @@ export interface Transaction {
   grossAmount: number;
   discountAmount: number;
   feeAmount: number;
-  professional: Professional;
+  /** Ausente nos lançamentos do extrato: a origem não informa quem atendeu. */
+  professional?: Professional;
   commissionAmount: number;
   studioNetProfit: number;
   netAmount: number;
@@ -80,7 +81,11 @@ export interface TransactionInput {
   description: string;
   grossAmount: number;
   discountAmount: number;
-  paymentFeeRate: number;
+  /**
+   * Omitido = usar a taxa padrão da forma de pagamento, resolvida no servidor. O app não
+   * guarda mais tabela de taxa; só manda o percentual quando a dona digita um.
+   */
+  paymentFeeRate?: number;
   professionalCommissionRate: number;
   professional?: Professional;
   category: string;
@@ -89,7 +94,6 @@ export interface TransactionInput {
   occurredAt: string;
   settledAt?: string;
   status: TransactionStatus;
-  origin: TransactionOrigin;
 }
 
 export type CategoryKind = 'receita' | 'despesa' | 'ambos';

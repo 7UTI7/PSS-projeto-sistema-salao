@@ -13,14 +13,6 @@ export const MONTHLY_REVENUE_GOAL = 5000;
  */
 export const DEFAULT_COMMISSION_RATE = 0.4;
 
-/**
- * Taxa sugerida por forma de pagamento, em fração. Serve apenas para pré-preencher o
- * formulário — o valor que vale é o que a dona confirma antes de salvar, e o cálculo
- * final é sempre feito no servidor.
- */
-export const SUGGESTED_PAYMENT_FEE_RATES: Record<string, number> = {
-  pix: 0,
-  dinheiro: 0,
-  debito: 0.0139,
-  credito: 0.0399,
-};
+// A tabela de taxa por forma de pagamento saiu daqui: ela vive no servidor
+// (DEFAULT_PAYMENT_FEE_RATES, em modules/transactions/calculation.service.ts). O app
+// deixa o campo vazio e o servidor aplica o padrão da forma de pagamento escolhida.

@@ -2,7 +2,7 @@
 import { Transaction, type PaymentMethod, type Professional, type TransactionFields } from '../../models/transaction.model.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { AppError } from '../../shared/utils/app-error.js';
-import { CalculationService } from './calculation.service.js';
+import { CalculationService, DEFAULT_PAYMENT_FEE_RATES } from './calculation.service.js';
 import { CategoryService } from '../categories/category.service.js';
 
 const calculationService = new CalculationService();
@@ -13,7 +13,8 @@ export interface CreateTransactionInput {
   description: string;
   grossAmount: number;
   discountAmount: number;
-  paymentFeeRate: number;
+  /** Ausente = usar a taxa padrão da forma de pagamento (DEFAULT_PAYMENT_FEE_RATES). */
+  paymentFeeRate?: number | undefined;
   professionalCommissionRate: number;
   professional?: Professional | undefined;
   category: string;
@@ -22,7 +23,6 @@ export interface CreateTransactionInput {
   occurredAt: Date;
   settledAt?: Date | undefined;
   status: 'pendente' | 'liquidada' | 'cancelada';
-  origin: 'manual' | 'booksy' | 'infinitepay';
 }
 
 export class TransactionService {
@@ -66,7 +66,8 @@ export class TransactionService {
       occurredAt: input.occurredAt,
       ...(settledAt ? { settledAt } : {}),
       status: input.status,
-      origin: input.origin,
+      // Lançamento criado pela API é sempre manual; importado entra pelo ImportService.
+      origin: 'manual',
       createdBy: actor.id,
     });
     return transaction.toObject();
@@ -81,6 +82,7 @@ export class TransactionService {
       : { _id: transactionId, professional: this.professionalFor(actor), deletedAt: null };
     const existing = await Transaction.findOne(filter);
     if (!existing) throw new AppError('Lançamento não encontrado.', 404, 'NOT_FOUND');
+    this.assertEditable(existing.origin);
 
     await categoryService.assertActive(input.category, input.type);
     const calculation = this.calculate(input);
@@ -98,7 +100,6 @@ export class TransactionService {
     existing.paymentMethod = input.paymentMethod;
     existing.occurredAt = input.occurredAt;
     existing.status = input.status;
-    existing.origin = input.origin;
     if (actor.role === 'admin' && input.professional) existing.professional = input.professional;
     if (input.costType) existing.costType = input.costType; else existing.set('costType', undefined);
     if (settledAt) existing.settledAt = settledAt; else existing.set('settledAt', undefined);
@@ -120,7 +121,9 @@ export class TransactionService {
       ? calculationService.calculate({
           grossAmount: input.grossAmount,
           discountAmount: input.discountAmount,
-          paymentFeeRate: input.paymentFeeRate,
+          // Sem taxa informada, vale a padrão da forma de pagamento — nunca um número
+          // que o aplicativo tenha escolhido.
+          paymentFeeRate: input.paymentFeeRate ?? DEFAULT_PAYMENT_FEE_RATES[input.paymentMethod],
           professionalCommissionRate: input.professionalCommissionRate,
         })
       : {
@@ -136,8 +139,28 @@ export class TransactionService {
     const filter = actor.role === 'admin'
       ? { _id: transactionId, deletedAt: null }
       : { _id: transactionId, professional: this.professionalFor(actor), deletedAt: null };
-    const result = await Transaction.updateOne(filter, { $set: { deletedAt: new Date() } });
-    if (result.matchedCount === 0) throw new AppError('Lançamento não encontrado.', 404, 'NOT_FOUND');
+    const existing = await Transaction.findOne(filter).select('origin').lean();
+    if (!existing) throw new AppError('Lançamento não encontrado.', 404, 'NOT_FOUND');
+    this.assertEditable(existing.origin);
+
+    await Transaction.updateOne({ _id: transactionId }, { $set: { deletedAt: new Date() } });
+  }
+
+  /**
+   * Lançamento importado não se edita nem se exclui: ele é o espelho de uma linha do
+   * arquivo. Editar faz o total divergir da origem em silêncio, e excluir é pior —
+   * o soft delete não limpa o `externalId`, então o índice único trata a linha como já
+   * importada e ela nunca volta no reenvio do arquivo. Para desfazer existe o caminho
+   * certo, que limpa o `externalId`: "Desfazer este lote", em /api/imports/:id.
+   */
+  private assertEditable(origin: TransactionFields['origin']): void {
+    if (origin === 'manual') return;
+    throw new AppError(
+      'Este lançamento veio de um arquivo importado e não pode ser alterado aqui. '
+        + 'Para removê-lo, desfaça o lote na tela de Importar.',
+      403,
+      'IMPORTED_TRANSACTION_READONLY',
+    );
   }
 
   private professionalFor(actor: AuthenticatedUser): Professional {

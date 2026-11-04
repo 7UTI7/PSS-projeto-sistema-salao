@@ -70,7 +70,6 @@ export function toTransactionInput(transaction: Transaction): TransactionInput {
     occurredAt: transaction.occurredAt,
     ...(transaction.settledAt ? { settledAt: transaction.settledAt } : {}),
     status: transaction.status,
-    origin: transaction.origin,
   };
 }
 
@@ -90,7 +89,7 @@ export function filterTransactions(
     return (
       transaction.description.toLowerCase().includes(term) ||
       transaction.category.toLowerCase().includes(term) ||
-      transaction.professional.toLowerCase().includes(term)
+      (transaction.professional?.toLowerCase().includes(term) ?? false)
     );
   });
 }

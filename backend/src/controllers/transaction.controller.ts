@@ -9,7 +9,9 @@ const transactionSchema = z.object({
   description: z.string().trim().min(1).max(240),
   grossAmount: z.number().nonnegative(),
   discountAmount: z.number().nonnegative().default(0),
-  paymentFeeRate: z.number().min(0).max(1).default(0),
+  // Opcional: ausente significa "usar a taxa padrão da forma de pagamento", resolvida
+  // no servidor. O aplicativo não envia mais um percentual que ele mesmo escolheu.
+  paymentFeeRate: z.number().min(0).max(1).optional(),
   professionalCommissionRate: z.number().min(0).max(1).default(0),
   professional: z.enum(['Nicolle', 'Stefany']).optional(),
   category: z.string().trim().min(1).max(100),
@@ -18,7 +20,6 @@ const transactionSchema = z.object({
   occurredAt: z.coerce.date(),
   settledAt: z.coerce.date().optional(),
   status: z.enum(['pendente', 'liquidada', 'cancelada']).default('pendente'),
-  origin: z.enum(['manual', 'booksy', 'infinitepay']).default('manual'),
 }).superRefine((value, context) => {
   if (value.type === 'despesa' && !value.costType) {
     context.addIssue({ code: 'custom', path: ['costType'], message: 'Informe se o custo é fixo ou variável.' });

@@ -60,6 +60,9 @@ export default function DashboardScreen() {
     const totals = new Map<Professional, number>(PROFESSIONALS.map((name) => [name, 0]));
     for (const transaction of transactions) {
       if (transaction.type !== 'receita' || transaction.status === 'cancelada') continue;
+      // Receita do extrato não tem profissional: entra no faturamento, mas não na
+      // divisão por pessoa. Quem diz quem atendeu é o Booksy.
+      if (!transaction.professional) continue;
       const current = totals.get(transaction.professional) ?? 0;
       totals.set(transaction.professional, current + transaction.grossAmount - transaction.discountAmount);
     }
@@ -463,7 +466,7 @@ function RecentItem({
           </Text>
           <View style={styles.txMetaRow}>
             <Text style={styles.txCategory} numberOfLines={1}>
-              {transaction.category} • {transaction.professional}
+              {transaction.category}{transaction.professional ? ' • ' + transaction.professional : ''}
             </Text>
           </View>
         </View>

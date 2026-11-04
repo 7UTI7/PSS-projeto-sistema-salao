@@ -325,3 +325,57 @@ describe('DELETE /api/imports/:id', () => {
     expect(response.status).toBe(400);
   });
 });
+
+describe('Lançamento importado é somente leitura', () => {
+  /** Monta o corpo que o formulário mandaria, para provar que o 403 não é de validação. */
+  function bodyFor(transaction: { description: string; grossAmount: number; category: string }) {
+    return {
+      type: 'receita',
+      description: transaction.description,
+      grossAmount: transaction.grossAmount,
+      discountAmount: 0,
+      professionalCommissionRate: 0,
+      category: transaction.category,
+      paymentMethod: 'pix',
+      occurredAt: '2026-10-01T09:00:00.000Z',
+      status: 'liquidada',
+    };
+  }
+
+  it('recusa editar e excluir, e aponta o caminho do lote', async () => {
+    const token = await adminToken();
+    await upload(token);
+    const imported = await Transaction.findOne({ origin: 'infinitepay', deletedAt: null }).lean();
+    expect(imported).not.toBeNull();
+
+    const edit = await request(app)
+      .put(`/api/transactions/${imported?._id.toString()}`)
+      .set('Authorization', `Bearer ${token}`)
+      .send(bodyFor({ description: 'Editado à mão', grossAmount: 999, category: imported?.category ?? 'Recebimentos Pix' }));
+    expect(edit.status).toBe(403);
+    expect(edit.body.message).toMatch(/desfa|lote/i);
+
+    const remove = await request(app)
+      .delete(`/api/transactions/${imported?._id.toString()}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(remove.status).toBe(403);
+
+    // Nada mudou: o valor segue o do arquivo e a linha continua ativa.
+    const after = await Transaction.findById(imported?._id).lean();
+    expect(after?.grossAmount).toBe(imported?.grossAmount);
+    expect(after?.deletedAt).toBeNull();
+  });
+
+  it('não atribui profissional às linhas do extrato', async () => {
+    const token = await adminToken();
+    await upload(token);
+    const rows = await Transaction.find({ origin: 'infinitepay', deletedAt: null }).lean();
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.professional).toBeUndefined();
+      // Sem saber quem atendeu não há base para comissão.
+      expect(row.commissionAmount).toBe(0);
+    }
+  });
+});

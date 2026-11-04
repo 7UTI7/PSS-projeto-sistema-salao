@@ -367,7 +367,9 @@ export class ImportService {
           grossAmount: roundCurrency(row.grossAmount),
           discountAmount: roundCurrency(row.discountAmount),
           feeAmount: calculation.feeAmount,
-          professional: row.professional,
+          // O extrato não diz quem atendeu: fica sem profissional até a conciliação
+          // associar o recebimento ao atendimento do Booksy.
+          ...(row.professional ? { professional: row.professional } : {}),
           commissionAmount: calculation.commissionAmount,
           studioNetProfit: calculation.studioNetProfit,
           netAmount: calculation.netAmount,
