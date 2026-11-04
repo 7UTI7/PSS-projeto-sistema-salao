@@ -1,5 +1,6 @@
 // Agrupa e registra todas as rotas da API sob /api.
 import { Router } from 'express';
+import auditRoutes from './audit.routes.js';
 import authRoutes from './auth.routes.js';
 import categoryRoutes from './category.routes.js';
 import importRoutes from './import.routes.js';
@@ -13,5 +14,6 @@ router.use('/categories', categoryRoutes);
 router.use('/transactions', transactionRoutes);
 router.use('/reports', reportRoutes);
 router.use('/imports', importRoutes);
+router.use('/audits', auditRoutes);
 
 export default router;

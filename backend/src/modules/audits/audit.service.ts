@@ -26,6 +26,7 @@
 // primeiro lançamento manual a tornaria falsa, e é justamente ela que precisa se mover
 // quando a dona justifica a diferença.
 import { Audit } from '../../models/audit.model.js';
+import { Category } from '../../models/category.model.js';
 import { Transaction, type AuditDirection, type AuditReason } from '../../models/transaction.model.js';
 import { WITHDRAWAL_CATEGORY } from '../imports/infinitepay.parser.js';
 import { AppError } from '../../shared/utils/app-error.js';
@@ -41,6 +42,28 @@ export type AuditOutcome = 'aprovada' | 'divergente' | 'fonte_ausente';
 
 /** Diferença de até um centavo é arredondamento, não divergência. */
 const TOLERANCE = 0.01;
+
+/** Categoria única dos ajustes, com natureza "ambos" porque eles vão para os dois lados. */
+export const ADJUSTMENT_CATEGORY = 'Ajustes de auditoria';
+
+/**
+ * O que cada motivo significa em dinheiro. `null` = não dá para deduzir, a dona informa.
+ *
+ * O caso que justifica a tabela existir é o `dinheiro`: o serviço pago em espécie JÁ está
+ * no faturamento do Booksy, então ele explica por que o dinheiro não entrou na conta, mas
+ * não é receita nova. Contá-lo no DRE faria o mês valer o dobro do atendimento.
+ */
+const REASON_EFFECTS: Record<AuditReason, {
+  type: 'receita' | 'despesa' | null;
+  countsInDre: boolean;
+  direction: AuditDirection | null;
+}> = {
+  dinheiro: { type: 'receita', countsInDre: false, direction: 'faltou_entrar' },
+  taxa: { type: 'despesa', countsInDre: true, direction: 'faltou_entrar' },
+  gorjeta: { type: 'receita', countsInDre: true, direction: 'entrou_a_mais' },
+  estorno: { type: 'despesa', countsInDre: true, direction: 'entrou_a_mais' },
+  outro: { type: null, countsInDre: true, direction: null },
+};
 
 export interface AuditAdjustment {
   id: string;
@@ -240,5 +263,84 @@ export class AuditService {
   /** Marca a aprovação de um mês que já estava fechado mas nunca foi carimbado. */
   async stampIfClosed(period: string, actor: AuthenticatedUser): Promise<AuditSummary> {
     return this.register(period, {}, actor);
+  }
+
+  /**
+   * O Lançamento Manual que justifica a diferença.
+   *
+   * O motivo decide tudo — tipo, direção e efeito no DRE — para a dona não ter de escolher
+   * sinal nem natureza contábil. Só "outro" pergunta, porque aí não há o que deduzir.
+   */
+  async addAdjustment(
+    period: string,
+    input: {
+      amount: number;
+      reason: AuditReason;
+      description: string;
+      direction?: AuditDirection | undefined;
+      type?: 'receita' | 'despesa' | undefined;
+      occurredAt?: Date | undefined;
+    },
+    actor: AuthenticatedUser,
+  ): Promise<AuditSummary> {
+    const range = periodRange(period);
+    const effect = REASON_EFFECTS[input.reason];
+
+    const direction = effect.direction ?? input.direction;
+    if (!direction) {
+      throw new AppError(
+        'Para o motivo "outro", diga se faltou entrar ou se entrou a mais.',
+        400,
+        'DIRECTION_REQUIRED',
+      );
+    }
+    const type = effect.type ?? input.type ?? 'receita';
+
+    // Fechar a auditoria de outubro em novembro é normal. O ajuste tem de cair DENTRO do
+    // mês auditado, senão ele não entra na conta que ele existe para fechar.
+    const occurredAt = input.occurredAt ?? range.end;
+    if (occurredAt < range.start || occurredAt > range.end) {
+      throw new AppError(
+        `A data do lançamento tem de estar dentro de ${period}.`,
+        400,
+        'DATE_OUT_OF_PERIOD',
+      );
+    }
+
+    await this.ensureAdjustmentCategory();
+
+    await Transaction.create({
+      type,
+      description: input.description,
+      grossAmount: input.amount,
+      discountAmount: 0,
+      feeAmount: 0,
+      commissionAmount: 0,
+      studioNetProfit: type === 'receita' ? input.amount : -input.amount,
+      netAmount: input.amount,
+      category: ADJUSTMENT_CATEGORY,
+      ...(type === 'despesa' ? { costType: 'variavel' as const } : {}),
+      paymentMethod: input.reason === 'dinheiro' ? 'dinheiro' : 'nao_informado',
+      occurredAt,
+      settledAt: occurredAt,
+      status: 'liquidada',
+      origin: 'manual',
+      countsInDre: effect.countsInDre,
+      auditReason: input.reason,
+      auditDirection: direction,
+      createdBy: actor.id,
+    });
+
+    // Recalcula e, se fechou, carimba. Zerar a conta É a aprovação.
+    return this.register(period, {}, actor);
+  }
+
+  /** O catálogo é gerenciado pela dona; a categoria dos ajustes nasce sozinha. */
+  private async ensureAdjustmentCategory(): Promise<void> {
+    await Category.findOneAndUpdate(
+      { name: ADJUSTMENT_CATEGORY },
+      { $setOnInsert: { name: ADJUSTMENT_CATEGORY, kind: 'ambos', active: true, deletedAt: null } },
+      { upsert: true },
+    ).collation({ locale: 'pt', strength: 2 });
   }
 }

@@ -21,7 +21,7 @@ const ALLOWED_MIME_TYPES = [
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 10 },
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 2, fields: 10 },
   fileFilter: (_request, file, callback) => {
     const extension = file.originalname.slice(file.originalname.lastIndexOf('.')).toLowerCase();
     // Extensão e MIME são ambos informados pelo cliente, então valem como triagem;
@@ -44,6 +44,15 @@ const upload = multer({
 
 export const uploadReportFile: RequestHandler = upload.single('file');
 
+/**
+ * A auditoria recebe os dois relatórios no mesmo envio: um mês só faz sentido conferido
+ * dos dois lados, e deixar importar um de cada vez é o que permitia ver meio mês.
+ */
+export const uploadAuditFiles: RequestHandler = upload.fields([
+  { name: 'booksy', maxCount: 1 },
+  { name: 'infinitepay', maxCount: 1 },
+]);
+
 /** Traduz os erros do multer para o envelope de erro da API. */
 export const uploadErrorHandler: ErrorRequestHandler = (error, _request, _response, next) => {
   if (error instanceof MulterError) {
@@ -55,7 +64,11 @@ export const uploadErrorHandler: ErrorRequestHandler = (error, _request, _respon
       ));
     }
     if (error.code === 'LIMIT_UNEXPECTED_FILE') {
-      return next(new AppError('Envie um único arquivo no campo "file".', 400, 'UNEXPECTED_FILE'));
+      return next(new AppError(
+        `Campo de arquivo inesperado: "${error.field ?? 'desconhecido'}".`,
+        400,
+        'UNEXPECTED_FILE',
+      ));
     }
     return next(new AppError('Falha ao receber o arquivo enviado.', 400, 'UPLOAD_FAILED'));
   }
