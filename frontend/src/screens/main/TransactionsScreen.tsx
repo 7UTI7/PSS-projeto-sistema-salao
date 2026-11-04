@@ -22,7 +22,7 @@ import {
   useFilteredTransactions,
   useSettleTransaction,
 } from '../../hooks/useTransactions';
-import { useFinancialSummary } from '../../hooks/useReports';
+import { useAudit } from '../../hooks/useAudit';
 import { usePeriodStore } from '../../store/periodStore';
 import { useAuthStore } from '../../store/authStore';
 import { getApiErrorMessage } from '../../services/api';
@@ -70,8 +70,8 @@ export default function TransactionsScreen() {
   // aqui no cliente, com outra regra, e por isso as duas telas mostravam valores
   // diferentes para o mesmo mês. É o total do MÊS, não do filtro da lista: o filtro
   // muda o que aparece na lista, não a conta do período.
-  const summaryQuery = useFinancialSummary();
-  const summary = summaryQuery.data;
+  const auditQuery = useAudit();
+  const audit = auditQuery.data;
 
   function handleSettle(transaction: Transaction) {
     Alert.alert(
@@ -171,14 +171,12 @@ export default function TransactionsScreen() {
           </View>
         </View>
 
-        {/* Taxa e líquido só existem em receita e só interessam à admin. */}
+        {/* Só o que entrou de fato. Taxa não existe em lançamento: o que a maquininha
+            retém já vem descontado no extrato. */}
         {isAdmin && isIncome && !isCancelled ? (
           <View style={styles.breakdownRow}>
             <Text style={styles.breakdownItem}>
-              Taxa <Text style={styles.breakdownValue}>{formatCurrency(item.feeAmount)}</Text>
-            </Text>
-            <Text style={styles.breakdownItem}>
-              Líquido studio{' '}
+              Entra na conta{' '}
               <Text style={[styles.breakdownValue, styles.breakdownHighlight]}>
                 {formatCurrency(item.studioNetProfit)}
               </Text>
@@ -260,27 +258,25 @@ export default function TransactionsScreen() {
           })}
         </View>
 
-        {/* Resumo do MÊS, igual ao do Painel: vem do servidor, não é somado aqui.
-            Só a administradora tem acesso ao resumo financeiro do estúdio. */}
-        {isAdmin && summary ? (
+        {/* Resumo do MÊS, nos mesmos três números do Painel: vem do servidor, não é
+            somado aqui. Só a administradora tem acesso ao resumo do estúdio. */}
+        {isAdmin && audit ? (
           <View style={styles.summaryRow}>
             <View style={styles.summaryBox}>
-              <Text style={styles.summaryLabel}>Faturamento</Text>
+              <Text style={styles.summaryLabel}>Entrou</Text>
               <Text style={[styles.summaryValue, { color: colors.violetRoyal }]}>
-                {formatCurrency(summary.faturamentoBruto)}
+                {formatCurrency(audit.saldoBruto)}
               </Text>
             </View>
             <View style={styles.summaryBox}>
-              <Text style={styles.summaryLabel}>Taxas</Text>
+              <Text style={styles.summaryLabel}>Retirado</Text>
               <Text style={[styles.summaryValue, { color: colors.statusError }]}>
-                {formatCurrency(summary.taxas)}
+                {formatCurrency(audit.saldoRetirado)}
               </Text>
             </View>
             <View style={styles.summaryBox}>
-              <Text style={styles.summaryLabel}>Receita líquida</Text>
-              <Text style={styles.summaryValue}>
-                {formatCurrency(summary.receitaLiquida)}
-              </Text>
+              <Text style={styles.summaryLabel}>Em conta</Text>
+              <Text style={styles.summaryValue}>{formatCurrency(audit.saldoLiquido)}</Text>
             </View>
           </View>
         ) : null}

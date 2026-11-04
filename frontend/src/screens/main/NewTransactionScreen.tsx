@@ -22,7 +22,7 @@ import {
 } from '../../hooks/useTransactions';
 import { useAuthStore } from '../../store/authStore';
 import { getApiErrorMessage } from '../../services/api';
-import { formatCurrency, formatPercent, parseAmountInput } from '../../utils/formatters';
+import { formatCurrency, parseAmountInput } from '../../utils/formatters';
 import { costTypeLabels, paymentMethodLabels, transactionStatusLabels } from '../../utils/labels';
 import {
   SELECTABLE_PAYMENT_METHODS,
@@ -48,7 +48,6 @@ interface FormState {
   category: string;
   professional: Professional;
   paymentMethod: PaymentMethod;
-  feeRatePercent: string;
   costType: CostType;
   status: TransactionStatus;
   occurredAt: string;
@@ -69,7 +68,6 @@ function emptyForm(): FormState {
     category: '',
     professional: 'Nicolle',
     paymentMethod: 'pix',
-    feeRatePercent: '0',
     costType: 'variavel',
     status: 'liquidada',
     occurredAt: todayAsInput(),
@@ -77,14 +75,10 @@ function emptyForm(): FormState {
 }
 
 /**
- * Reconstrói o formulário a partir do lançamento salvo. As alíquotas não voltam na
- * resposta da API — só os valores já calculados —, então são derivadas da base de
- * cálculo para que uma edição não zere taxa e comissão sem a dona perceber.
+ * Reconstrói o formulário a partir do lançamento salvo. Não há mais alíquota a
+ * recuperar: lançamento manual não tem taxa nem comissão.
  */
 function formFromTransaction(transaction: Transaction): FormState {
-  const baseAmount = transaction.grossAmount - transaction.discountAmount;
-  const asPercent = (value: number) => (baseAmount > 0 ? ((value / baseAmount) * 100).toFixed(2) : '0');
-
   return {
     type: transaction.type,
     amount: String(transaction.grossAmount),
@@ -93,7 +87,6 @@ function formFromTransaction(transaction: Transaction): FormState {
     category: transaction.category,
     professional: transaction.professional ?? 'Nicolle',
     paymentMethod: transaction.paymentMethod,
-    feeRatePercent: asPercent(transaction.feeAmount),
     costType: transaction.costType ?? 'variavel',
     status: transaction.status,
     occurredAt: transaction.occurredAt.slice(0, 10),
@@ -161,7 +154,6 @@ export default function NewTransactionScreen() {
 
   const grossAmount = parseAmountInput(form.amount);
   const discountAmount = parseAmountInput(form.discount);
-  const feeRate = parseAmountInput(form.feeRatePercent) / 100;
   const { type, description, professional, paymentMethod, costType, status, occurredAt } = form;
 
   // Prévia local, só para a dona conferir. O valor que vale é o que o servidor
@@ -171,21 +163,14 @@ export default function NewTransactionScreen() {
       return { baseAmount: grossAmount, feeAmount: 0, commissionAmount: 0, studioNetProfit: -grossAmount };
     }
     const baseAmount = Math.max(grossAmount - discountAmount, 0);
-    const feeAmount = baseAmount * feeRate;
-    return {
-      baseAmount,
-      feeAmount,
-      commissionAmount: 0,
-      studioNetProfit: baseAmount - feeAmount,
-    };
-  }, [type, grossAmount, discountAmount, feeRate]);
+    return { baseAmount, feeAmount: 0, commissionAmount: 0, studioNetProfit: baseAmount };
+  }, [type, grossAmount, discountAmount]);
 
   function validate(): string | null {
     if (!description.trim()) return 'Descreva o procedimento ou a despesa.';
     if (grossAmount <= 0) return 'Informe um valor maior que zero.';
     if (discountAmount > grossAmount) return 'O desconto não pode superar o valor bruto.';
     if (!category) return 'Escolha uma categoria do catálogo.';
-    if (feeRate < 0 || feeRate > 1) return 'A taxa deve estar entre 0% e 100%.';
     if (!dateInputToIso(occurredAt)) return 'Informe a data no formato AAAA-MM-DD.';
     return null;
   }
@@ -203,13 +188,10 @@ export default function NewTransactionScreen() {
       description: description.trim(),
       grossAmount,
       discountAmount,
-      // Campo de taxa vazio: não manda nada e o servidor aplica o padrão da forma de
-      // pagamento. Despesa nunca tem taxa nem comissão.
-      ...(type === 'receita' && form.feeRatePercent.trim() !== ''
-        ? { paymentFeeRate: feeRate }
-        : type === 'despesa'
-          ? { paymentFeeRate: 0 }
-          : {}),
+      // Lançamento manual não tem taxa: o que a maquininha retém já vem descontado no
+      // extrato da InfinitePay. Mandar zero explicitamente impede o servidor de aplicar
+      // o padrão da forma de pagamento e descontar de novo.
+      paymentFeeRate: 0,
       // Sempre zero: o estúdio não trabalha com repasse por profissional.
       professionalCommissionRate: 0,
       category,
@@ -480,26 +462,6 @@ export default function NewTransactionScreen() {
           </Text>
         </View>
 
-        {/* Taxa só existe em receita, e só a admin a define. */}
-        {isIncome && isAdmin ? (
-          <View style={styles.formCard}>
-            <Text style={styles.fieldLabel}>TAXA DA MAQUININHA (%)</Text>
-            <TextInput
-              style={styles.textInput}
-              value={form.feeRatePercent}
-              onChangeText={(value) => update({ feeRatePercent: value })}
-              keyboardType="decimal-pad"
-              placeholder="3,99"
-              placeholderTextColor={colors.graphiteMuted}
-            />
-
-            <Text style={styles.fieldHelp}>
-              Deixe a taxa em branco para usar a padrão da forma de pagamento. O cálculo
-              final é sempre do servidor.
-            </Text>
-          </View>
-        ) : null}
-
         {/* Prévia do cálculo: confere antes de salvar; o servidor recalcula ao gravar. */}
         {isIncome ? (
           <View style={styles.summaryCard}>
@@ -509,12 +471,8 @@ export default function NewTransactionScreen() {
               <Text style={styles.summaryLabel}>Base (bruto − desconto)</Text>
               <Text style={styles.summaryValue}>{formatCurrency(preview.baseAmount)}</Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Taxa ({formatPercent(feeRate)})</Text>
-              <Text style={styles.summaryValue}>− {formatCurrency(preview.feeAmount)}</Text>
-            </View>
             <View style={[styles.summaryRow, styles.summaryTotalRow]}>
-              <Text style={styles.summaryTotalLabel}>Líquido do studio</Text>
+              <Text style={styles.summaryTotalLabel}>Entra na conta</Text>
               <Text style={styles.summaryTotalValue}>
                 {formatCurrency(preview.studioNetProfit)}
               </Text>

@@ -111,7 +111,11 @@ export default function ReportsScreen() {
           <View style={styles.statement}>
             <StatementRow label="Faturamento bruto" value={dre.faturamentoBruto} />
             <StatementRow label="(−) Descontos concedidos" value={-dre.descontos} muted />
-            <StatementRow label="(−) Taxas de pagamento" value={-dre.taxas} muted />
+            {/* Só aparece se houver: lançamento manual não tem taxa, e o extrato da
+                InfinitePay já chega líquido do que a maquininha reteve. */}
+            {dre.taxas > 0 ? (
+              <StatementRow label="(−) Taxas de pagamento" value={-dre.taxas} muted />
+            ) : null}
             <View style={styles.statementDivider} />
 
             {/* O que SAIU não é despesa lançada: é o que ela transferiu da conta da

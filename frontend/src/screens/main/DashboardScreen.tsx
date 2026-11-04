@@ -83,7 +83,10 @@ export default function DashboardScreen() {
   // isto fica undefined e o banner cai no saldo liquidado, como antes.
   const audit = auditQuery.data;
   const monthlyGoal = useGoalStore((state) => state.goal);
-  const goalProgress = dre ? Math.min(shareOf(dre.faturamentoBruto, monthlyGoal), 1) : 0;
+  // A meta mede o Saldo Bruto, o mesmo número dos cartões. Enquanto o mês não foi
+  // conferido não há saldo, e o faturamento do DRE serve de prévia.
+  const entrouNoMes = audit?.saldoBruto ?? dre?.faturamentoBruto ?? 0;
+  const goalProgress = Math.min(shareOf(entrouNoMes, monthlyGoal), 1);
   const refreshing = dreQuery.isRefetching || cashFlowQuery.isRefetching;
 
   function handleRefresh() {
@@ -214,7 +217,11 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {/* KPIs do DRE. Sem eles (colaboradora), mostra o aviso de área restrita. */}
+        {/* UM vocabulário só: bruto, retirado, líquido.
+            "Faturamento bruto" e "Receita líquida" saíram daqui porque eram esses
+            mesmos números com outro nome — e, com o mês conferido, exatamente iguais.
+
+            Sem eles (colaboradora), mostra o aviso de área restrita. */}
         <View style={styles.sectionHeadingRow}>
           <Text style={styles.sectionHeading}>DESEMPENHO MENSAL</Text>
           <Text style={styles.sectionHeadingRight}>{periodLabel(period)}</Text>
@@ -227,62 +234,40 @@ export default function DashboardScreen() {
               O resumo financeiro do studio é visível apenas para a administradora.
             </Text>
           </View>
-        ) : dre ? (
+        ) : (
           <>
-            <View style={styles.grid2x2}>
-              <KpiCard
-                label="Faturamento bruto"
-                value={formatCurrency(dre.faturamentoBruto)}
-                hint={`Descontos: ${formatCurrency(dre.descontos)}`}
-                icon="wallet-outline"
-                iconColor={colors.violetRoyal}
-                iconBackground={colors.lavenderTint}
-              />
-              <KpiCard
-                label="Receita líquida"
-                value={formatCurrency(dre.receitaLiquida)}
-                hint={`Taxas: ${formatCurrency(dre.taxas)}`}
-                icon="calculator-outline"
-                iconColor={colors.tertiary}
-                iconBackground={colors.lavenderTint}
-              />
+            {audit ? (
+              <View style={styles.grid2x2}>
+                <KpiCard
+                  label="Saldo bruto"
+                  value={formatCurrency(audit.saldoBruto)}
+                  hint="Tudo que entrou na conta"
+                  icon="download-outline"
+                  iconColor={colors.violetRoyal}
+                  iconBackground={colors.lavenderTint}
+                />
+                <KpiCard
+                  label="Saldo retirado"
+                  value={formatCurrency(audit.saldoRetirado)}
+                  hint="Transferido para a conta do salão"
+                  icon="exit-outline"
+                  iconColor={colors.statusError}
+                  iconBackground={colors.statusErrorBg}
+                  valueColor={colors.statusError}
+                />
+                <KpiCard
+                  label="Saldo líquido"
+                  value={formatCurrency(audit.saldoLiquido)}
+                  hint="O que ainda está na conta"
+                  icon="wallet-outline"
+                  iconColor={colors.statusSuccess}
+                  iconBackground={colors.statusSuccessBg}
+                  valueColor={colors.statusSuccess}
+                />
+              </View>
+            ) : null}
 
-              {/* Os três saldos da auditoria. Só aparecem quando o mês foi conferido:
-                  antes disso eles não têm sentido, porque o que entrou ainda não bate
-                  com o que foi atendido. */}
-              {audit ? (
-                <>
-                  <KpiCard
-                    label="Saldo bruto"
-                    value={formatCurrency(audit.saldoBruto)}
-                    hint="Tudo que entrou na conta"
-                    icon="download-outline"
-                    iconColor={colors.violetRoyal}
-                    iconBackground={colors.lavenderTint}
-                  />
-                  <KpiCard
-                    label="Saldo retirado"
-                    value={formatCurrency(audit.saldoRetirado)}
-                    hint="Transferido para a conta do salão"
-                    icon="exit-outline"
-                    iconColor={colors.statusError}
-                    iconBackground={colors.statusErrorBg}
-                    valueColor={colors.statusError}
-                  />
-                  <KpiCard
-                    label="Saldo líquido"
-                    value={formatCurrency(audit.saldoLiquido)}
-                    hint="O que ainda está na conta"
-                    icon="wallet-outline"
-                    iconColor={colors.statusSuccess}
-                    iconBackground={colors.statusSuccessBg}
-                    valueColor={colors.statusSuccess}
-                  />
-                </>
-              ) : null}
-            </View>
-
-            {/* META MENSAL: valor local (studio.config.ts), a API não tem cadastro de metas. */}
+            {/* META MENSAL: editável no perfil, guardada no aparelho (store/goalStore.ts). */}
             <View style={styles.metaCard}>
               <View style={styles.metaTop}>
                 <View style={styles.metaLeft}>
@@ -305,14 +290,14 @@ export default function DashboardScreen() {
               </View>
 
               <View style={styles.metaBottom}>
-                <Text style={styles.metaSubText}>{formatCurrency(dre.faturamentoBruto)} faturado</Text>
+                <Text style={styles.metaSubText}>{formatCurrency(entrouNoMes)} no mês</Text>
                 <Text style={styles.metaSubText}>
-                  Falta: {formatCurrency(Math.max(monthlyGoal - dre.faturamentoBruto, 0))}
+                  Falta: {formatCurrency(Math.max(monthlyGoal - entrouNoMes, 0))}
                 </Text>
               </View>
             </View>
           </>
-        ) : null}
+        )}
 
         {/* DIVISÃO DE RECEITAS POR PROFISSIONAL */}
         <View style={styles.breakdownCard}>
