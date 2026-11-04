@@ -40,7 +40,9 @@ type TypeFilter = 'todos' | TransactionType;
 const TYPE_FILTERS: { key: TypeFilter; label: string }[] = [
   { key: 'todos', label: 'Todos' },
   { key: 'receita', label: 'Receitas' },
-  { key: 'despesa', label: 'Despesas' },
+  // "Saídas" e não "Despesas": o que sai são as retiradas lidas do extrato e os
+  // ajustes de auditoria, não despesa lançada à mão.
+  { key: 'despesa', label: 'Saídas' },
 ];
 
 export default function TransactionsScreen() {
@@ -169,15 +171,11 @@ export default function TransactionsScreen() {
           </View>
         </View>
 
-        {/* Comissão e lucro líquido só existem em receita e só interessam à admin. */}
+        {/* Taxa e líquido só existem em receita e só interessam à admin. */}
         {isAdmin && isIncome && !isCancelled ? (
           <View style={styles.breakdownRow}>
             <Text style={styles.breakdownItem}>
               Taxa <Text style={styles.breakdownValue}>{formatCurrency(item.feeAmount)}</Text>
-            </Text>
-            <Text style={styles.breakdownItem}>
-              Comissão{' '}
-              <Text style={styles.breakdownValue}>{formatCurrency(item.commissionAmount)}</Text>
             </Text>
             <Text style={styles.breakdownItem}>
               Líquido studio{' '}
@@ -273,15 +271,15 @@ export default function TransactionsScreen() {
               </Text>
             </View>
             <View style={styles.summaryBox}>
-              <Text style={styles.summaryLabel}>Despesas</Text>
+              <Text style={styles.summaryLabel}>Taxas</Text>
               <Text style={[styles.summaryValue, { color: colors.statusError }]}>
-                {formatCurrency(summary.despesas)}
+                {formatCurrency(summary.taxas)}
               </Text>
             </View>
             <View style={styles.summaryBox}>
-              <Text style={styles.summaryLabel}>Lucro</Text>
+              <Text style={styles.summaryLabel}>Receita líquida</Text>
               <Text style={styles.summaryValue}>
-                {formatCurrency(summary.lucroEstudio)}
+                {formatCurrency(summary.receitaLiquida)}
               </Text>
             </View>
           </View>

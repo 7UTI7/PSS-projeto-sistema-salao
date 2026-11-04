@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   TouchableOpacity,
   Alert,
@@ -12,9 +13,9 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
+import { useGoalStore } from '../../store/goalStore';
 import { DEFAULT_API_URL } from '../../services/api';
-import { DEFAULT_COMMISSION_RATE, MONTHLY_REVENUE_GOAL } from '../../config/studio.config';
-import { formatCurrency, formatPercent } from '../../utils/formatters';
+import { formatCurrency, parseAmountInput } from '../../utils/formatters';
 import { colors, typography } from '../../theme/theme';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
@@ -25,6 +26,11 @@ export default function SettingsScreen() {
   const { user, logout } = useAuthStore();
   const isAdmin = user?.role === 'admin';
 
+  const monthlyGoal = useGoalStore((state) => state.goal);
+  const setGoal = useGoalStore((state) => state.setGoal);
+  // null = mostrando o valor; string = ela está editando.
+  const [goalDraft, setGoalDraft] = useState<string | null>(null);
+
   function handleLogout() {
     Alert.alert('Sair da Conta', 'Deseja realmente encerrar sua sessão?', [
       { text: 'Cancelar', style: 'cancel' },
@@ -32,12 +38,14 @@ export default function SettingsScreen() {
     ]);
   }
 
-  /**
-   * Taxas e comissão ainda não tem cadastro na API: os valores sugeridos vivem em
-   * src/config/studio.config.ts, e cada lançamento pode sobrescrevê-los na hora.
-   */
-  function handleLocalSetting(title: string, body: string) {
-    Alert.alert(title, body);
+  function handleSaveGoal() {
+    const parsed = parseAmountInput(goalDraft ?? '');
+    if (parsed <= 0) {
+      Alert.alert('Meta inválida', 'Informe um valor maior que zero.');
+      return;
+    }
+    setGoal(parsed);
+    setGoalDraft(null);
   }
 
   return (
@@ -108,52 +116,56 @@ export default function SettingsScreen() {
           </>
         ) : null}
 
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() =>
-            handleLocalSetting(
-              'Taxas de Maquininha',
-              'As taxas sugeridas por forma de pagamento ficam em src/config/studio.config.ts. '
-                + 'Em cada lançamento de receita você confirma ou ajusta a taxa, e o servidor '
-                + 'recalcula os valores. Um cadastro de taxas na API ainda não existe.'
-            )
-          }
-        >
+        {/* META DO MÊS: o único parâmetro que ela edita. Fica guardada no aparelho. */}
+        <View style={styles.menuItem}>
           <View style={styles.menuIconBox}>
-            <Ionicons name="card-outline" size={20} color={colors.primary} />
+            <Ionicons name="flag-outline" size={20} color={colors.primary} />
           </View>
           <View style={styles.menuContent}>
-            <Text style={styles.menuLabel}>Taxas de Maquininhas & Cartão</Text>
-            <Text style={styles.menuSub}>Sugestões locais · ajustáveis por lançamento</Text>
-          </View>
-          <Ionicons name="information-circle-outline" size={18} color={colors.graphiteMuted} />
-        </TouchableOpacity>
+            <Text style={styles.menuLabel}>Meta do mês</Text>
 
-        <View style={styles.menuDivider} />
+            {goalDraft === null ? (
+              <Text style={styles.menuSub}>
+                {formatCurrency(monthlyGoal)} de faturamento
+              </Text>
+            ) : (
+              <View style={styles.goalEditRow}>
+                <TextInput
+                  style={styles.goalInput}
+                  value={goalDraft}
+                  onChangeText={setGoalDraft}
+                  keyboardType="decimal-pad"
+                  placeholder="5.000,00"
+                  placeholderTextColor={colors.graphiteMuted}
+                  autoFocus
+                />
+                <TouchableOpacity
+                  style={styles.goalSaveBtn}
+                  activeOpacity={0.8}
+                  onPress={handleSaveGoal}
+                >
+                  <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.goalCancelBtn}
+                  activeOpacity={0.8}
+                  onPress={() => setGoalDraft(null)}
+                >
+                  <Ionicons name="close" size={16} color={colors.graphiteMuted} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
 
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() =>
-            handleLocalSetting(
-              'Regras de Comissionamento',
-              `A comissão padrão é de ${formatPercent(DEFAULT_COMMISSION_RATE, 0)} e a meta mensal `
-                + `é de ${formatCurrency(MONTHLY_REVENUE_GOAL)}. Os dois valores ficam em `
-                + 'src/config/studio.config.ts. Comissão por serviço e meta cadastrável '
-                + 'dependem de um módulo que a API ainda não tem.'
-            )
-          }
-        >
-          <View style={styles.menuIconBox}>
-            <Ionicons name="pie-chart-outline" size={20} color={colors.primary} />
-          </View>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuLabel}>Comissão & Meta do Mês</Text>
-            <Text style={styles.menuSub}>
-              {formatPercent(DEFAULT_COMMISSION_RATE, 0)} · meta de {formatCurrency(MONTHLY_REVENUE_GOAL)}
-            </Text>
-          </View>
-          <Ionicons name="information-circle-outline" size={18} color={colors.graphiteMuted} />
-        </TouchableOpacity>
+          {goalDraft === null ? (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => setGoalDraft(String(monthlyGoal).replace('.', ','))}
+            >
+              <Ionicons name="create-outline" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
       </Card>
 
       {/* Botão de Logout */}
@@ -286,5 +298,39 @@ const styles = StyleSheet.create({
     color: colors.graphiteMuted,
     textAlign: 'center',
     marginTop: 14,
+  },
+  goalEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 6,
+  },
+  goalInput: {
+    flex: 1,
+    backgroundColor: colors.surfaceCanvas,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontFamily: typography.fonts.body,
+    fontSize: 13,
+    color: colors.graphiteText,
+  },
+  goalSaveBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  goalCancelBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

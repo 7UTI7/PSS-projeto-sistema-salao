@@ -9,18 +9,19 @@ import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native
 import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
-import { FloatingActionButton } from '../../components/ui/FloatingActionButton';
 import { AdminOnlyState, ErrorState, LoadingState } from '../../components/ui/QueryState';
 import { useCashFlowReport, useFinancialSummary, useIsAdmin } from '../../hooks/useReports';
+import { useAudit } from '../../hooks/useAudit';
 import { usePeriodStore } from '../../store/periodStore';
-import { profitMargin, summarizeCashFlow } from '../../services/report.service';
-import { formatCurrency, formatPercent } from '../../utils/formatters';
+import { summarizeCashFlow } from '../../services/report.service';
+import { formatCurrency } from '../../utils/formatters';
 import { periodLabel } from '../../utils/period';
 import type { FinancialSummary } from '../../types';
 
 export default function ReportsScreen() {
   const isAdmin = useIsAdmin();
   const period = usePeriodStore((state) => state.period);
+  const auditQuery = useAudit();
   const dreQuery = useFinancialSummary();
   const cashFlowQuery = useCashFlowReport();
 
@@ -111,39 +112,44 @@ export default function ReportsScreen() {
             <StatementRow label="Faturamento bruto" value={dre.faturamentoBruto} />
             <StatementRow label="(−) Descontos concedidos" value={-dre.descontos} muted />
             <StatementRow label="(−) Taxas de pagamento" value={-dre.taxas} muted />
-            <StatementRow label="(=) Receita líquida" value={dre.receitaLiquida} emphasis />
-
             <View style={styles.statementDivider} />
 
-            <StatementRow
-              label="(−) Comissões"
-              value={-dre.comissoes}
-              hint="Repasse às profissionais, não é despesa do estúdio"
-              muted
-            />
-            <StatementRow
-              label="(−) Despesas"
-              value={-dre.despesas}
-              hint="Só o que foi lançado no período"
-              muted
-            />
+            {/* O que SAIU não é despesa lançada: é o que ela transferiu da conta da
+                InfinitePay para a conta do salão, lido do extrato. */}
+            {auditQuery.data ? (
+              <StatementRow
+                label="(−) Retirado para a conta do salão"
+                value={-auditQuery.data.saldoRetirado}
+                hint="Transferências da conta da InfinitePay, lidas do extrato"
+                muted
+              />
+            ) : null}
 
             <View style={styles.statementDivider} />
 
             <View style={styles.resultRow}>
               <View style={styles.resultLabelCol}>
-                <Text style={styles.resultLabel}>Lucro do estúdio</Text>
+                <Text style={styles.resultLabel}>
+                  {auditQuery.data ? 'Ainda na conta' : 'Receita líquida'}
+                </Text>
                 <Text style={styles.resultHint}>
-                  Margem de {formatPercent(profitMargin(dre), 1)} sobre o faturamento bruto
+                  {auditQuery.data
+                    ? 'Entradas do mês menos o que já foi retirado'
+                    : 'Faturamento menos descontos e taxas'}
                 </Text>
               </View>
               <Text
                 style={[
                   styles.resultValue,
-                  { color: dre.lucroEstudio >= 0 ? colors.statusSuccess : colors.statusError },
+                  {
+                    color:
+                      (auditQuery.data?.saldoLiquido ?? dre.receitaLiquida) >= 0
+                        ? colors.statusSuccess
+                        : colors.statusError,
+                  },
                 ]}
               >
-                {formatCurrency(dre.lucroEstudio)}
+                {formatCurrency(auditQuery.data?.saldoLiquido ?? dre.receitaLiquida)}
               </Text>
             </View>
           </View>
@@ -245,7 +251,6 @@ export default function ReportsScreen() {
         </View>
       </ScrollView>
 
-      <FloatingActionButton />
     </View>
   );
 }

@@ -15,7 +15,6 @@ export interface AuditSubmitRequest {
   booksy: PickedFile;
   infinitepay: PickedFile;
   /** Comissão aplicada às receitas do Booksy, em fração (0.4 = 40%). */
-  defaultCommissionRate?: number;
 }
 
 /**
@@ -23,11 +22,8 @@ export interface AuditSubmitRequest {
  * { uri, name, type } em vez de um Blob — é assim que o arquivo escolhido pelo
  * expo-document-picker é enviado sem carregá-lo inteiro na memória do app.
  */
-function buildForm({ booksy, infinitepay, defaultCommissionRate }: AuditSubmitRequest): FormData {
+function buildForm({ booksy, infinitepay }: AuditSubmitRequest): FormData {
   const form = new FormData();
-  if (defaultCommissionRate !== undefined) {
-    form.append('defaultCommissionRate', String(defaultCommissionRate));
-  }
   for (const [field, file] of [['booksy', booksy], ['infinitepay', infinitepay]] as const) {
     form.append(field, {
       uri: file.uri,

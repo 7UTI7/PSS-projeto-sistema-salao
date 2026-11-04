@@ -1,18 +1,14 @@
 // Parâmetros do estúdio que ainda não têm cadastro na API.
 //
-// Tudo aqui é configuração local: o backend não tem módulo de metas nem de regras de
-// comissão (ver "Limitações conhecidas" em Documents/RELATORIO_BACKEND.md). Enquanto
-// não tiver, estes valores ficam num só lugar em vez de espalhados pelas telas.
+// Ficou quase vazio de propósito, e os dois que saíram valem registro:
+//
+// - A META MENSAL virou valor editável e mora em store/goalStore.ts, persistida no
+//   aparelho. Antes era uma constante aqui, então mudá-la exigia alterar o código.
+// - A COMISSÃO saiu inteira: o estúdio não trabalha com repasse por profissional. O
+//   servidor ainda tem o campo no lançamento, mas nada mais envia percentual, então ele
+//   fica sempre em zero.
+// - A TABELA DE TAXAS por forma de pagamento foi para o servidor
+//   (DEFAULT_PAYMENT_FEE_RATES, em modules/transactions/calculation.service.ts), para o
+//   app não carregar número de negócio.
 
-/** Meta de faturamento bruto do mês, usada na barra de progresso do Dashboard. */
-export const MONTHLY_REVENUE_GOAL = 5000;
-
-/**
- * Comissão padrão da profissional, aplicada como sugestão no lançamento manual e na
- * importação do Booksy (que não traz o percentual). Fração, não percentual: 0.4 = 40%.
- */
-export const DEFAULT_COMMISSION_RATE = 0.4;
-
-// A tabela de taxa por forma de pagamento saiu daqui: ela vive no servidor
-// (DEFAULT_PAYMENT_FEE_RATES, em modules/transactions/calculation.service.ts). O app
-// deixa o campo vazio e o servidor aplica o padrão da forma de pagamento escolhida.
+export {};

@@ -13,15 +13,14 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
-import { FloatingActionButton } from '../../components/ui/FloatingActionButton';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/QueryState';
 import { useCashFlowReport, useFinancialSummary, useIsAdmin } from '../../hooks/useReports';
 import { useAudit } from '../../hooks/useAudit';
 import { useFilteredTransactions } from '../../hooks/useTransactions';
 import { useAuthStore } from '../../store/authStore';
 import { usePeriodStore } from '../../store/periodStore';
-import { profitMargin, summarizeCashFlow } from '../../services/report.service';
-import { MONTHLY_REVENUE_GOAL } from '../../config/studio.config';
+import { summarizeCashFlow } from '../../services/report.service';
+import { useGoalStore } from '../../store/goalStore';
 import {
   formatCurrency,
   formatPercent,
@@ -83,7 +82,8 @@ export default function DashboardScreen() {
   // Só a admin lê a auditoria (o hook é `enabled: isAdmin`), então para a colaboradora
   // isto fica undefined e o banner cai no saldo liquidado, como antes.
   const audit = auditQuery.data;
-  const goalProgress = dre ? Math.min(shareOf(dre.faturamentoBruto, MONTHLY_REVENUE_GOAL), 1) : 0;
+  const monthlyGoal = useGoalStore((state) => state.goal);
+  const goalProgress = dre ? Math.min(shareOf(dre.faturamentoBruto, monthlyGoal), 1) : 0;
   const refreshing = dreQuery.isRefetching || cashFlowQuery.isRefetching;
 
   function handleRefresh() {
@@ -265,34 +265,6 @@ export default function DashboardScreen() {
                 iconColor={colors.tertiary}
                 iconBackground={colors.lavenderTint}
               />
-              {/* Comissão é repasse, não despesa: fica em card próprio para não inflar
-                  "Despesas" num mês em que nada foi gasto. */}
-              <KpiCard
-                label="Comissões"
-                value={formatCurrency(dre.comissoes)}
-                hint="Repasse às profissionais"
-                icon="people-outline"
-                iconColor={colors.tertiary}
-                iconBackground={colors.lavenderTint}
-              />
-              <KpiCard
-                label="Despesas"
-                value={formatCurrency(dre.despesas)}
-                hint="Só o que foi lançado"
-                icon="bag-outline"
-                iconColor={colors.statusError}
-                iconBackground={colors.statusErrorBg}
-                valueColor={colors.statusError}
-              />
-              <KpiCard
-                label="Lucro do estúdio"
-                value={formatCurrency(dre.lucroEstudio)}
-                hint={`Margem: ${formatPercent(profitMargin(dre), 1)}`}
-                icon="cash-outline"
-                iconColor={dre.lucroEstudio >= 0 ? colors.statusSuccess : colors.statusError}
-                iconBackground={dre.lucroEstudio >= 0 ? colors.statusSuccessBg : colors.statusErrorBg}
-                valueColor={dre.lucroEstudio >= 0 ? colors.statusSuccess : colors.statusError}
-              />
             </View>
 
             {/* META MENSAL: valor local (studio.config.ts), a API não tem cadastro de metas. */}
@@ -304,7 +276,7 @@ export default function DashboardScreen() {
                   </View>
                   <View>
                     <Text style={styles.metaLabel}>META MENSAL</Text>
-                    <Text style={styles.metaTarget}>{formatCurrency(MONTHLY_REVENUE_GOAL)}</Text>
+                    <Text style={styles.metaTarget}>{formatCurrency(monthlyGoal)}</Text>
                   </View>
                 </View>
                 <View style={styles.metaRight}>
@@ -320,7 +292,7 @@ export default function DashboardScreen() {
               <View style={styles.metaBottom}>
                 <Text style={styles.metaSubText}>{formatCurrency(dre.faturamentoBruto)} faturado</Text>
                 <Text style={styles.metaSubText}>
-                  Falta: {formatCurrency(Math.max(MONTHLY_REVENUE_GOAL - dre.faturamentoBruto, 0))}
+                  Falta: {formatCurrency(Math.max(monthlyGoal - dre.faturamentoBruto, 0))}
                 </Text>
               </View>
             </View>
@@ -426,7 +398,6 @@ export default function DashboardScreen() {
         </View>
       </ScrollView>
 
-      <FloatingActionButton />
     </View>
   );
 }

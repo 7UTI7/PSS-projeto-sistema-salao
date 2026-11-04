@@ -34,9 +34,8 @@ import { useIsAdmin } from '../../hooks/useReports';
 import { getApiErrorMessage } from '../../services/api';
 import { ACCEPTED_EXTENSIONS_LABEL } from '../../services/import.service';
 import { AUDIT_REASON_LABELS } from '../../services/audit.service';
-import { DEFAULT_COMMISSION_RATE } from '../../config/studio.config';
-import { formatCurrency, formatDate, formatPercent, parseAmountInput } from '../../utils/formatters';
-import { periodKeyOf, periodLabel } from '../../utils/period';
+import { formatCurrency, formatDate, parseAmountInput } from '../../utils/formatters';
+import { periodKeyOf, periodLabel, type PeriodKey } from '../../utils/period';
 import { usePeriodStore } from '../../store/periodStore';
 import { importBatchStatusLabels, importSourceLabels } from '../../utils/labels';
 import type { AuditReason, AuditSummary, ImportBatch, ImportSource } from '../../types';
@@ -83,7 +82,6 @@ export default function ImportsScreen() {
   const setPeriod = usePeriodStore((state) => state.setPeriod);
 
   const { files, pickFile, clearFiles, ready } = useAuditFilePicker();
-  const [commissionPercent, setCommissionPercent] = useState(String(DEFAULT_COMMISSION_RATE * 100));
   // Formulário de correção: aberto só quando ela decide justificar a diferença.
   const [reason, setReason] = useState<AuditReason | null>(null);
   const [entryAmount, setEntryAmount] = useState('');
@@ -97,7 +95,10 @@ export default function ImportsScreen() {
   const rollbackMutation = useRollbackImport();
 
   const audit = auditQuery.data;
-  const commissionRate = parseAmountInput(commissionPercent) / 100;
+
+  // Quantos lotes o histórico mostra fechado, e o mês pelo qual ele está filtrado.
+  const [showAllBatches, setShowAllBatches] = useState(false);
+  const [batchFilter, setBatchFilter] = useState<PeriodKey | null>(null);
 
   /**
    * Período que cada origem já cobre, somando os lotes processados. É o que responde
@@ -120,6 +121,29 @@ export default function ImportsScreen() {
     ([, range]) => periodKeyOf(range.start) <= period && period <= periodKeyOf(range.end),
   );
 
+  /**
+   * Meses que o filtro oferece: só os que realmente têm lote, do mais recente para o
+   * mais antigo. Um seletor de data livre deixaria escolher mês vazio.
+   */
+  const batchMonths = useMemo(() => {
+    const months = new Set<PeriodKey>();
+    for (const batch of batchesQuery.data ?? []) {
+      months.add(periodKeyOf(batch.periodStart ?? batch.createdAt));
+    }
+    return [...months].sort().reverse();
+  }, [batchesQuery.data]);
+
+  // O filtro é pelo mês do ARQUIVO, não da data do envio: é assim que ela pensa em
+  // "a importação de outubro", mesmo tendo subido o arquivo em novembro.
+  const filteredBatches = useMemo(() => {
+    const all = batchesQuery.data ?? [];
+    if (!batchFilter) return all;
+    return all.filter((batch) => periodKeyOf(batch.periodStart ?? batch.createdAt) === batchFilter);
+  }, [batchesQuery.data, batchFilter]);
+
+  const visibleBatches = showAllBatches ? filteredBatches : filteredBatches.slice(0, 3);
+  const hiddenCount = filteredBatches.length - visibleBatches.length;
+
   function resetEntryForm() {
     setReason(null);
     setEntryAmount('');
@@ -140,11 +164,7 @@ export default function ImportsScreen() {
     if (!files.booksy || !files.infinitepay) return;
 
     submitMutation.mutate(
-      {
-        booksy: files.booksy,
-        infinitepay: files.infinitepay,
-        defaultCommissionRate: commissionRate,
-      },
+      { booksy: files.booksy, infinitepay: files.infinitepay },
       {
         onSuccess: (result) => {
           clearFiles();
@@ -229,7 +249,6 @@ export default function ImportsScreen() {
     );
   }
 
-  const batches = batchesQuery.data ?? [];
   const busy = submitMutation.isPending;
 
   return (
@@ -308,41 +327,6 @@ export default function ImportsScreen() {
             </View>
           );
         })}
-
-        {/* Comissão padrão: o Booksy não exporta o percentual, então vem daqui. */}
-        <View style={styles.card}>
-          <Text style={styles.fieldLabel}>COMISSÃO PADRÃO DAS RECEITAS DO BOOKSY</Text>
-          <View style={styles.commissionRow}>
-            <TouchableOpacity
-              style={styles.stepBtn}
-              activeOpacity={0.7}
-              onPress={() =>
-                setCommissionPercent(String(Math.max(parseAmountInput(commissionPercent) - 5, 0)))
-              }
-            >
-              <Ionicons name="remove" size={18} color={colors.primary} />
-            </TouchableOpacity>
-
-            <View style={styles.commissionValueBox}>
-              <Text style={styles.commissionValue}>{formatPercent(commissionRate, 0)}</Text>
-            </View>
-
-            <TouchableOpacity
-              style={styles.stepBtn}
-              activeOpacity={0.7}
-              onPress={() =>
-                setCommissionPercent(String(Math.min(parseAmountInput(commissionPercent) + 5, 100)))
-              }
-            >
-              <Ionicons name="add" size={18} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.fieldHelp}>
-            Aplicada a cada atendimento importado do Booksy, que não traz o percentual no
-            arquivo. Não entra na conta da auditoria: comissão é repasse, não deixa de ser
-            dinheiro que entrou.
-          </Text>
-        </View>
 
         <TouchableOpacity
           style={[styles.primaryActionBtn, (!ready || busy) && styles.btnDisabled]}
@@ -593,26 +577,76 @@ export default function ImportsScreen() {
           </View>
         ) : null}
 
-        {/* HISTÓRICO: de onde se desfaz um lote. */}
+        {/* HISTÓRICO: de onde se desfaz um lote. Mostra os 3 últimos fechado, porque
+            cada mês conferido rende dois lotes e a lista cresce rápido. */}
         <View style={styles.sectionHeaderRow}>
           <View style={styles.summaryTitleRow}>
             <Ionicons name="time-outline" size={18} color={colors.primary} />
             <Text style={styles.summaryTitle}>Histórico de importações</Text>
           </View>
+          {filteredBatches.length > 0 ? (
+            <Text style={styles.sectionHeaderCount}>{filteredBatches.length}</Text>
+          ) : null}
         </View>
+
+        {batchMonths.length > 1 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+          >
+            <TouchableOpacity
+              style={[styles.filterPill, batchFilter === null && styles.filterPillActive]}
+              activeOpacity={0.8}
+              onPress={() => {
+                setBatchFilter(null);
+                setShowAllBatches(false);
+              }}
+            >
+              <Text
+                style={[styles.filterPillText, batchFilter === null && styles.filterPillTextActive]}
+              >
+                Todos
+              </Text>
+            </TouchableOpacity>
+
+            {batchMonths.map((month) => (
+              <TouchableOpacity
+                key={month}
+                style={[styles.filterPill, batchFilter === month && styles.filterPillActive]}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setBatchFilter(month);
+                  setShowAllBatches(false);
+                }}
+              >
+                <Text
+                  style={[
+                    styles.filterPillText,
+                    batchFilter === month && styles.filterPillTextActive,
+                  ]}
+                >
+                  {periodLabel(month)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        ) : null}
 
         {batchesQuery.isPending ? (
           <ActivityIndicator color={colors.primary} style={styles.historyLoader} />
         ) : batchesQuery.isError ? (
           <ErrorState error={batchesQuery.error} onRetry={batchesQuery.refetch} />
-        ) : batches.length === 0 ? (
+        ) : filteredBatches.length === 0 ? (
           <View style={styles.card}>
             <Text style={styles.historyEmpty}>
-              Nenhum arquivo importado ainda. Comece pelo relatório do Booksy do mês.
+              {batchFilter
+                ? `Nenhuma importação de ${periodLabel(batchFilter)}.`
+                : 'Nenhum arquivo importado ainda. Comece pelos dois relatórios do mês.'}
             </Text>
           </View>
         ) : (
-          batches.map((batch) => (
+          visibleBatches.map((batch) => (
             <View key={batch._id} style={styles.batchCard}>
               <View style={styles.batchHeader}>
                 <View style={styles.batchTitleCol}>
@@ -663,6 +697,26 @@ export default function ImportsScreen() {
             </View>
           ))
         )}
+
+        {hiddenCount > 0 ? (
+          <TouchableOpacity
+            style={styles.secondaryActionBtn}
+            activeOpacity={0.8}
+            onPress={() => setShowAllBatches(true)}
+          >
+            <Text style={styles.secondaryActionText}>Ver mais {hiddenCount}</Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {showAllBatches && filteredBatches.length > 3 ? (
+          <TouchableOpacity
+            style={styles.secondaryActionBtn}
+            activeOpacity={0.8}
+            onPress={() => setShowAllBatches(false)}
+          >
+            <Text style={styles.secondaryActionText}>Mostrar menos</Text>
+          </TouchableOpacity>
+        ) : null}
 
         <View style={styles.tipCard}>
           <Ionicons name="bulb-outline" size={20} color={colors.primary} style={styles.tipIcon} />
@@ -1295,5 +1349,35 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.body,
     fontSize: 13,
     color: colors.graphiteText,
+  },
+  sectionHeaderCount: {
+    fontFamily: typography.fonts.bodySemiBold,
+    fontSize: 11,
+    color: colors.graphiteMuted,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingBottom: 12,
+  },
+  filterPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+    borderColor: colors.surfaceContainer,
+    backgroundColor: colors.surfaceCanvas,
+  },
+  filterPillActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.lavenderTint,
+  },
+  filterPillText: {
+    fontFamily: typography.fonts.bodyMedium,
+    fontSize: 12,
+    color: colors.graphiteMuted,
+  },
+  filterPillTextActive: {
+    color: colors.violetRoyal,
   },
 });

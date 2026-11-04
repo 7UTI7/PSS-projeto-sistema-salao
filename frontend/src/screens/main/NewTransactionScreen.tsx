@@ -22,7 +22,6 @@ import {
 } from '../../hooks/useTransactions';
 import { useAuthStore } from '../../store/authStore';
 import { getApiErrorMessage } from '../../services/api';
-import { DEFAULT_COMMISSION_RATE } from '../../config/studio.config';
 import { formatCurrency, formatPercent, parseAmountInput } from '../../utils/formatters';
 import { costTypeLabels, paymentMethodLabels, transactionStatusLabels } from '../../utils/labels';
 import {
@@ -50,7 +49,6 @@ interface FormState {
   professional: Professional;
   paymentMethod: PaymentMethod;
   feeRatePercent: string;
-  commissionPercent: string;
   costType: CostType;
   status: TransactionStatus;
   occurredAt: string;
@@ -72,7 +70,6 @@ function emptyForm(): FormState {
     professional: 'Nicolle',
     paymentMethod: 'pix',
     feeRatePercent: '0',
-    commissionPercent: String(DEFAULT_COMMISSION_RATE * 100),
     costType: 'variavel',
     status: 'liquidada',
     occurredAt: todayAsInput(),
@@ -97,7 +94,6 @@ function formFromTransaction(transaction: Transaction): FormState {
     professional: transaction.professional ?? 'Nicolle',
     paymentMethod: transaction.paymentMethod,
     feeRatePercent: asPercent(transaction.feeAmount),
-    commissionPercent: asPercent(transaction.commissionAmount),
     costType: transaction.costType ?? 'variavel',
     status: transaction.status,
     occurredAt: transaction.occurredAt.slice(0, 10),
@@ -166,7 +162,6 @@ export default function NewTransactionScreen() {
   const grossAmount = parseAmountInput(form.amount);
   const discountAmount = parseAmountInput(form.discount);
   const feeRate = parseAmountInput(form.feeRatePercent) / 100;
-  const commissionRate = parseAmountInput(form.commissionPercent) / 100;
   const { type, description, professional, paymentMethod, costType, status, occurredAt } = form;
 
   // Prévia local, só para a dona conferir. O valor que vale é o que o servidor
@@ -177,14 +172,13 @@ export default function NewTransactionScreen() {
     }
     const baseAmount = Math.max(grossAmount - discountAmount, 0);
     const feeAmount = baseAmount * feeRate;
-    const commissionAmount = baseAmount * commissionRate;
     return {
       baseAmount,
       feeAmount,
-      commissionAmount,
-      studioNetProfit: baseAmount - feeAmount - commissionAmount,
+      commissionAmount: 0,
+      studioNetProfit: baseAmount - feeAmount,
     };
-  }, [type, grossAmount, discountAmount, feeRate, commissionRate]);
+  }, [type, grossAmount, discountAmount, feeRate]);
 
   function validate(): string | null {
     if (!description.trim()) return 'Descreva o procedimento ou a despesa.';
@@ -192,7 +186,6 @@ export default function NewTransactionScreen() {
     if (discountAmount > grossAmount) return 'O desconto não pode superar o valor bruto.';
     if (!category) return 'Escolha uma categoria do catálogo.';
     if (feeRate < 0 || feeRate > 1) return 'A taxa deve estar entre 0% e 100%.';
-    if (commissionRate < 0 || commissionRate > 1) return 'A comissão deve estar entre 0% e 100%.';
     if (!dateInputToIso(occurredAt)) return 'Informe a data no formato AAAA-MM-DD.';
     return null;
   }
@@ -217,7 +210,8 @@ export default function NewTransactionScreen() {
         : type === 'despesa'
           ? { paymentFeeRate: 0 }
           : {}),
-      professionalCommissionRate: type === 'receita' ? commissionRate : 0,
+      // Sempre zero: o estúdio não trabalha com repasse por profissional.
+      professionalCommissionRate: 0,
       category,
       paymentMethod,
       occurredAt: occurredAtIso,
@@ -274,7 +268,7 @@ export default function NewTransactionScreen() {
         <View style={styles.headerBar}>
           <View>
             <Text style={styles.headerTitle}>
-              {isEditing ? 'Editar Lançamento' : 'Novo Lançamento'}
+              {isEditing ? 'Editar lançamento' : 'Lançamento manual'}
             </Text>
             <Text style={styles.headerSubtitle}>Registro de procedimento ou despesa</Text>
           </View>
@@ -294,43 +288,21 @@ export default function NewTransactionScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Receita x Despesa. Colaboradora só registra receita (regra do backend). */}
-        <View style={styles.segmentedContainer}>
-          <TouchableOpacity
-            style={[styles.segmentBtn, isIncome && styles.segmentBtnActive]}
-            onPress={() => update({ type: 'receita' })}
-          >
-            <Ionicons
-              name="arrow-up-circle"
-              size={17}
-              color={isIncome ? '#FFFFFF' : colors.graphiteMuted}
-              style={styles.segmentIcon}
-            />
-            <Text style={[styles.segmentText, isIncome && styles.segmentTextActive]}>
-              Receita (Atendimento)
-            </Text>
-          </TouchableOpacity>
+        {/* Só entrada: o estúdio não registra despesa à mão. O que sai da conta é o
+            Saldo Retirado, lido do extrato, e as saídas da auditoria (taxa, estorno)
+            são criadas por ela própria.
 
-          <TouchableOpacity
-            style={[
-              styles.segmentBtn,
-              !isIncome && styles.segmentBtnActiveExpense,
-              !isAdmin && styles.segmentBtnDisabled,
-            ]}
-            disabled={!isAdmin}
-            onPress={() => update({ type: 'despesa' })}
-          >
-            <Ionicons
-              name="arrow-down-circle"
-              size={17}
-              color={!isIncome ? '#FFFFFF' : colors.graphiteMuted}
-              style={styles.segmentIcon}
-            />
-            <Text style={[styles.segmentText, !isIncome && styles.segmentTextActive]}>
-              Despesa (Insumo)
+            Um lançamento de SAÍDA ainda pode chegar aqui pela edição — foi a auditoria
+            que o criou. Nesse caso o tipo é preservado e apenas anunciado: trocá-lo em
+            silêncio viraria o sinal do ajuste e reabriria o mês. */}
+        {!isIncome ? (
+          <View style={styles.outflowBanner}>
+            <Ionicons name="arrow-down-circle" size={17} color={colors.statusError} />
+            <Text style={styles.outflowText}>
+              Lançamento de saída, criado pela auditoria do mês.
             </Text>
-          </TouchableOpacity>
-        </View>
+          </View>
+        ) : null}
 
         {!isAdmin ? (
           <Text style={styles.roleHint}>
@@ -508,7 +480,7 @@ export default function NewTransactionScreen() {
           </Text>
         </View>
 
-        {/* Taxa e comissão só existem em receita, e só a admin as define. */}
+        {/* Taxa só existe em receita, e só a admin a define. */}
         {isIncome && isAdmin ? (
           <View style={styles.formCard}>
             <Text style={styles.fieldLabel}>TAXA DA MAQUININHA (%)</Text>
@@ -521,15 +493,6 @@ export default function NewTransactionScreen() {
               placeholderTextColor={colors.graphiteMuted}
             />
 
-            <Text style={[styles.fieldLabel, styles.fieldSpacing]}>COMISSÃO DA PROFISSIONAL (%)</Text>
-            <TextInput
-              style={styles.textInput}
-              value={form.commissionPercent}
-              onChangeText={(value) => update({ commissionPercent: value })}
-              keyboardType="decimal-pad"
-              placeholder="40"
-              placeholderTextColor={colors.graphiteMuted}
-            />
             <Text style={styles.fieldHelp}>
               Deixe a taxa em branco para usar a padrão da forma de pagamento. O cálculo
               final é sempre do servidor.
@@ -549,10 +512,6 @@ export default function NewTransactionScreen() {
             <View style={styles.summaryRow}>
               <Text style={styles.summaryLabel}>Taxa ({formatPercent(feeRate)})</Text>
               <Text style={styles.summaryValue}>− {formatCurrency(preview.feeAmount)}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Comissão ({formatPercent(commissionRate)})</Text>
-              <Text style={styles.summaryValue}>− {formatCurrency(preview.commissionAmount)}</Text>
             </View>
             <View style={[styles.summaryRow, styles.summaryTotalRow]}>
               <Text style={styles.summaryTotalLabel}>Líquido do studio</Text>
@@ -907,5 +866,21 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.bodyBold,
     fontSize: 13,
     color: '#FFFFFF',
+  },
+  outflowBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.statusErrorBg,
+    borderRadius: borderRadius.md,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 16,
+  },
+  outflowText: {
+    flex: 1,
+    fontFamily: typography.fonts.bodyMedium,
+    fontSize: 12,
+    color: colors.statusError,
   },
 });

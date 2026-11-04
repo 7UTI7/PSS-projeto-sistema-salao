@@ -6,6 +6,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useAuthStore } from '../store/authStore';
+import { useGoalStore } from '../store/goalStore';
 import {
   AuthStackParamList,
   MainTabParamList,
@@ -136,12 +137,16 @@ function MainNavigator() {
 }
 
 export default function AppNavigator() {
+  const loadGoal = useGoalStore((state) => state.loadGoal);
   const { isAuthenticated, mustChangePassword, isLoading, loadSession } =
     useAuthStore();
 
   useEffect(() => {
     loadSession();
-  }, [loadSession]);
+    // A meta mora no aparelho; ler junto da sessão evita a barra de progresso piscar o
+    // valor padrão antes do que ela definiu.
+    void loadGoal();
+  }, [loadSession, loadGoal]);
 
   if (isLoading) {
     return (

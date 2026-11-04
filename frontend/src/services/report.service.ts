@@ -51,9 +51,3 @@ export function summarizeCashFlow(points: readonly CashFlowPoint[]): CashFlowSum
     { inflow: 0, outflow: 0, balance: 0, days: 0 }
   );
 }
-
-/** Margem do lucro do estúdio sobre o faturamento bruto, como fração (0.325 = 32,5%). */
-export function profitMargin(summary: FinancialSummary): number {
-  if (!summary.faturamentoBruto) return 0;
-  return summary.lucroEstudio / summary.faturamentoBruto;
-}

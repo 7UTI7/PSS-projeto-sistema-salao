@@ -16,7 +16,7 @@ export function FloatingActionButton() {
       onPress={() => navigation.navigate('NewTransaction')}
     >
       <Ionicons name="add" size={22} color="#FFFFFF" />
-      <Text style={styles.fabText}>Novo Lançamento</Text>
+      <Text style={styles.fabText}>Lançamento manual</Text>
     </TouchableOpacity>
   );
 }
