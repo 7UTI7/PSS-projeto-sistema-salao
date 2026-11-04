@@ -5,16 +5,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   useFonts,
-  BodoniModa_400Regular,
-  BodoniModa_600SemiBold,
-  BodoniModa_700Bold,
-} from '@expo-google-fonts/bodoni-moda';
-import {
-  Manrope_400Regular,
-  Manrope_500Medium,
-  Manrope_600SemiBold,
-  Manrope_700Bold,
-} from '@expo-google-fonts/manrope';
+  Roboto_400Regular,
+  Roboto_500Medium,
+  Roboto_600SemiBold,
+  Roboto_700Bold,
+} from '@expo-google-fonts/roboto';
 import AppNavigator from './src/navigation/AppNavigator';
 import { colors } from './src/theme/theme';
 
@@ -29,13 +24,10 @@ const queryClient = new QueryClient({
 
 export default function App() {
   const [fontsLoaded] = useFonts({
-    BodoniModa_400Regular,
-    BodoniModa_600SemiBold,
-    BodoniModa_700Bold,
-    Manrope_400Regular,
-    Manrope_500Medium,
-    Manrope_600SemiBold,
-    Manrope_700Bold,
+    Roboto_400Regular,
+    Roboto_500Medium,
+    Roboto_600SemiBold,
+    Roboto_700Bold,
   });
 
   if (!fontsLoaded) {

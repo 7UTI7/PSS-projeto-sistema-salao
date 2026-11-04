@@ -51,14 +51,16 @@ export const colors = {
 };
 
 export const typography = {
+  // Roboto em tudo. Os sete tokens continuam existindo para as telas não precisarem
+  // mudar; o que era título em serifa agora é o mesmo Roboto, só com outro peso.
   fonts: {
-    headline: 'BodoniModa_600SemiBold',
-    headlineBold: 'BodoniModa_700Bold',
-    headlineRegular: 'BodoniModa_400Regular',
-    body: 'Manrope_400Regular',
-    bodyMedium: 'Manrope_500Medium',
-    bodySemiBold: 'Manrope_600SemiBold',
-    bodyBold: 'Manrope_700Bold',
+    headline: 'Roboto_700Bold',
+    headlineBold: 'Roboto_700Bold',
+    headlineRegular: 'Roboto_500Medium',
+    body: 'Roboto_400Regular',
+    bodyMedium: 'Roboto_500Medium',
+    bodySemiBold: 'Roboto_600SemiBold',
+    bodyBold: 'Roboto_700Bold',
   },
   sizes: {
     labelSm: 11,
