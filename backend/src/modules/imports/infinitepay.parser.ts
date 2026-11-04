@@ -114,6 +114,31 @@ interface StatementSummary {
   accountHolder: string | null;
 }
 
+/**
+ * Descreve, em uma linha, o que a leitura encontrou no arquivo.
+ *
+ * Entra numa mensagem de erro que a dona lê na tela, então cita só nome de aba e nome de
+ * coluna — nunca valor nem nome de cliente, que é conteúdo do extrato.
+ */
+function describeTables(tables: readonly SheetTable[]): string {
+  if (tables.length === 0) return 'um arquivo sem nenhuma tabela';
+
+  const parts = tables.slice(0, 3).map((table) => {
+    const filled = table.rows.filter((row) => row.some((cell) => cell.trim() !== ''));
+    if (filled.length === 0) return `"${table.name}" (vazia)`;
+
+    // O cabeçalho é a primeira linha com mais de uma célula preenchida; antes dela vêm
+    // título e resumo, que não ajudam a identificar as colunas.
+    const header = filled.find((row) => row.filter((cell) => cell.trim() !== '').length > 1)
+      ?? filled[0] ?? [];
+    const names = header.filter((cell) => cell.trim() !== '').slice(0, 8).join(', ');
+    return `"${table.name}" com ${filled.length} linha(s) e colunas [${names}]`;
+  });
+
+  const resto = tables.length > 3 ? ` e mais ${tables.length - 3}` : '';
+  return `${parts.join('; ')}${resto}`;
+}
+
 export function parseInfinitePayStatement(tables: SheetTable[], options: ParseOptions): ParseOutcome {
   void options; // A comissão não se aplica: o extrato não diz quem atendeu.
 
@@ -133,9 +158,17 @@ export function parseInfinitePayStatement(tables: SheetTable[], options: ParseOp
         'FILES_SWAPPED',
       );
     }
+    // A mensagem diz o que o servidor LEU, não só que falhou.
+    //
+    // Sem isso, "não encontrei movimentações" é um beco sem saída: não dá para saber se o
+    // arquivo chegou vazio, se chegou outro arquivo, ou se as colunas têm outro nome. Com
+    // o que foi lido na tela, ela compara com o arquivo em dois segundos — e quem for
+    // mexer no código sabe por onde começar.
     throw new AppError(
-      'Não encontrei movimentações neste extrato. Confira se é o "Relatório de '
-        + 'movimentações" da InfinitePay, exportado pelo aplicativo.',
+      'Não encontrei movimentações neste extrato. '
+        + `Li ${describeTables(tables)}. `
+        + 'Preciso de uma tabela com as colunas Data, Tipo de transação e Valor. '
+        + 'Confira se é o "Relatório de movimentações" da InfinitePay.',
       400,
       'STATEMENT_WITHOUT_MOVEMENTS',
     );

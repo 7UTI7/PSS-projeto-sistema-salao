@@ -455,3 +455,67 @@ describe('parseInfinitePayStatement com o extrato real', () => {
     expect(rows[rows.length - 1]?.occurredAt.toISOString().slice(0, 10)).toBe('2026-11-01');
   });
 });
+
+/**
+ * Quando a leitura falha, a mensagem precisa dizer o que o servidor LEU.
+ *
+ * Sem isso o erro é um beco sem saída: ninguém sabe se chegou outro arquivo, se chegou
+ * vazio, ou se as colunas têm outro nome. Foi exatamente o que travou um teste de
+ * verdade — a tela dizia "não encontrei movimentações" e não havia como descobrir por quê
+ * sem acesso ao arquivo que o celular mandou.
+ */
+describe('a mensagem de extrato ilegível descreve o arquivo', () => {
+  const options = { paymentFeeRates: {}, professionalCommissionRates: {} } as never;
+
+  it('cita a aba, a contagem de linhas e os nomes das colunas', () => {
+    const tables: SheetTable[] = [{
+      name: 'Planilha1',
+      rows: [
+        ['Relatorio qualquer'],
+        ['Dia', 'Descricao', 'Montante'],
+        ['01/10/2026', 'Alguma coisa', '10,00'],
+      ],
+    }];
+
+    try {
+      parseInfinitePayStatement(tables, options);
+      expect.unreachable('devia ter recusado o arquivo');
+    } catch (error) {
+      const message = (error as Error).message;
+      expect(message).toContain('Planilha1');
+      expect(message).toContain('3 linha(s)');
+      // Os nomes das colunas que ELE viu, para comparar com o que precisa.
+      expect(message).toContain('Dia, Descricao, Montante');
+      expect(message).toContain('Data, Tipo de transação e Valor');
+    }
+  });
+
+  it('não vaza valores nem nomes de clientes na mensagem', () => {
+    const tables: SheetTable[] = [{
+      name: 'Movimentos',
+      rows: [
+        ['Dia', 'Cliente', 'Montante'],
+        ['01/10/2026', 'Maria Souza Oliveira', '1234,56'],
+      ],
+    }];
+
+    try {
+      parseInfinitePayStatement(tables, options);
+      expect.unreachable('devia ter recusado o arquivo');
+    } catch (error) {
+      const message = (error as Error).message;
+      // "Cliente" é nome de coluna e pode aparecer; o nome da pessoa e o valor, não.
+      expect(message).not.toContain('Maria Souza Oliveira');
+      expect(message).not.toContain('1234,56');
+    }
+  });
+
+  it('avisa quando o arquivo chegou sem tabela nenhuma', () => {
+    try {
+      parseInfinitePayStatement([], options);
+      expect.unreachable('devia ter recusado o arquivo');
+    } catch (error) {
+      expect((error as Error).message).toContain('sem nenhuma tabela');
+    }
+  });
+});
