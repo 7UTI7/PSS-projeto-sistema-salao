@@ -1,4 +1,4 @@
-// Rotas de relatórios DRE e Fluxo de Caixa (/api/reports); só admin.
+// Rotas de relatórios DRE, Fluxo de Caixa e Conciliação (/api/reports); só admin.
 import { Router } from 'express';
 import { ReportController } from '../controllers/report.controller.js';
 import { authMiddleware } from '../shared/middlewares/auth.middleware.js';
@@ -12,5 +12,9 @@ const controller = new ReportController();
 router.use(authMiddleware, passwordPolicyMiddleware, rbacMiddleware('admin'));
 router.get('/dre', asyncHandler((request, response) => controller.dre(request, response)));
 router.get('/cash-flow', asyncHandler((request, response) => controller.cashFlow(request, response)));
+router.get(
+  '/reconciliation',
+  asyncHandler((request, response) => controller.reconciliation(request, response)),
+);
 
 export default router;
