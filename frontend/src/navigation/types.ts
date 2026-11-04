@@ -21,5 +21,6 @@ export type RootStackParamList = {
   Settings: undefined;
   Team: undefined;
   Categories: undefined;
+  ImportHistory: undefined;
   ChangePasswordMandatory: undefined;
 };

@@ -144,10 +144,9 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* OS TRÊS SALDOS, vindos da auditoria do mês.
-            Bruto = o que entrou, já explicado. Retirado = o que ela tirou da conta da
-            InfinitePay. Líquido = o que ainda está lá. O número grande é o Líquido,
-            porque é o que responde "quanto eu tenho".
+        {/* UM número só: o que ainda está na conta da InfinitePay. É a resposta de
+            "quanto eu tenho", e dividir o destaque com outros valores a enfraquecia.
+            Bruto, retirado e líquido estão detalhados no Desempenho Mensal.
 
             Para a colaboradora, que não vê a auditoria, o banner segue mostrando o saldo
             liquidado do período, como antes. */}
@@ -177,24 +176,6 @@ export default function DashboardScreen() {
                 : '••••••••'}
             </Text>
           </View>
-
-          {audit ? (
-            <View style={styles.saldoRow}>
-              <View style={styles.saldoCol}>
-                <Text style={styles.saldoLabel}>SALDO BRUTO</Text>
-                <Text style={styles.saldoValue}>
-                  {balanceVisible ? formatCurrency(audit.saldoBruto) : '••••'}
-                </Text>
-              </View>
-              <View style={styles.saldoDivider} />
-              <View style={styles.saldoCol}>
-                <Text style={styles.saldoLabel}>SALDO RETIRADO</Text>
-                <Text style={styles.saldoValue}>
-                  {balanceVisible ? formatCurrency(audit.saldoRetirado) : '••••'}
-                </Text>
-              </View>
-            </View>
-          ) : null}
 
           <View style={styles.bannerFooter}>
             <View style={styles.growthBadge}>
@@ -265,6 +246,40 @@ export default function DashboardScreen() {
                 iconColor={colors.tertiary}
                 iconBackground={colors.lavenderTint}
               />
+
+              {/* Os três saldos da auditoria. Só aparecem quando o mês foi conferido:
+                  antes disso eles não têm sentido, porque o que entrou ainda não bate
+                  com o que foi atendido. */}
+              {audit ? (
+                <>
+                  <KpiCard
+                    label="Saldo bruto"
+                    value={formatCurrency(audit.saldoBruto)}
+                    hint="Tudo que entrou na conta"
+                    icon="download-outline"
+                    iconColor={colors.violetRoyal}
+                    iconBackground={colors.lavenderTint}
+                  />
+                  <KpiCard
+                    label="Saldo retirado"
+                    value={formatCurrency(audit.saldoRetirado)}
+                    hint="Transferido para a conta do salão"
+                    icon="exit-outline"
+                    iconColor={colors.statusError}
+                    iconBackground={colors.statusErrorBg}
+                    valueColor={colors.statusError}
+                  />
+                  <KpiCard
+                    label="Saldo líquido"
+                    value={formatCurrency(audit.saldoLiquido)}
+                    hint="O que ainda está na conta"
+                    icon="wallet-outline"
+                    iconColor={colors.statusSuccess}
+                    iconBackground={colors.statusSuccessBg}
+                    valueColor={colors.statusSuccess}
+                  />
+                </>
+              ) : null}
             </View>
 
             {/* META MENSAL: valor local (studio.config.ts), a API não tem cadastro de metas. */}
@@ -657,35 +672,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.primary,
     lineHeight: 17,
-  },
-  saldoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.14)',
-  },
-  saldoCol: {
-    flex: 1,
-  },
-  saldoDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    marginHorizontal: 12,
-  },
-  saldoLabel: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 8,
-    letterSpacing: 0.6,
-    color: colors.lavenderSubtle,
-  },
-  saldoValue: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 14,
-    color: '#FFFFFF',
-    marginTop: 3,
   },
   auditWarnCard: {
     flexDirection: 'row',

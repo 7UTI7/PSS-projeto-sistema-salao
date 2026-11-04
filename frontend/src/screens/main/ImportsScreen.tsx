@@ -25,6 +25,9 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { AdminOnlyState, ErrorState } from '../../components/ui/QueryState';
@@ -35,7 +38,7 @@ import { getApiErrorMessage } from '../../services/api';
 import { ACCEPTED_EXTENSIONS_LABEL } from '../../services/import.service';
 import { AUDIT_REASON_LABELS } from '../../services/audit.service';
 import { formatCurrency, formatDate, parseAmountInput } from '../../utils/formatters';
-import { periodKeyOf, periodLabel, type PeriodKey } from '../../utils/period';
+import { periodKeyOf, periodLabel } from '../../utils/period';
 import { usePeriodStore } from '../../store/periodStore';
 import { importBatchStatusLabels, importSourceLabels } from '../../utils/labels';
 import type { AuditReason, AuditSummary, ImportBatch, ImportSource } from '../../types';
@@ -77,6 +80,7 @@ const SOURCES: SourceCard[] = [
 const REASONS: AuditReason[] = ['dinheiro', 'taxa', 'gorjeta', 'estorno', 'outro'];
 
 export default function ImportsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isAdmin = useIsAdmin();
   const period = usePeriodStore((state) => state.period);
   const setPeriod = usePeriodStore((state) => state.setPeriod);
@@ -95,10 +99,6 @@ export default function ImportsScreen() {
   const rollbackMutation = useRollbackImport();
 
   const audit = auditQuery.data;
-
-  // Quantos lotes o histórico mostra fechado, e o mês pelo qual ele está filtrado.
-  const [showAllBatches, setShowAllBatches] = useState(false);
-  const [batchFilter, setBatchFilter] = useState<PeriodKey | null>(null);
 
   /**
    * Período que cada origem já cobre, somando os lotes processados. É o que responde
@@ -121,28 +121,11 @@ export default function ImportsScreen() {
     ([, range]) => periodKeyOf(range.start) <= period && period <= periodKeyOf(range.end),
   );
 
-  /**
-   * Meses que o filtro oferece: só os que realmente têm lote, do mais recente para o
-   * mais antigo. Um seletor de data livre deixaria escolher mês vazio.
-   */
-  const batchMonths = useMemo(() => {
-    const months = new Set<PeriodKey>();
-    for (const batch of batchesQuery.data ?? []) {
-      months.add(periodKeyOf(batch.periodStart ?? batch.createdAt));
-    }
-    return [...months].sort().reverse();
-  }, [batchesQuery.data]);
-
-  // O filtro é pelo mês do ARQUIVO, não da data do envio: é assim que ela pensa em
-  // "a importação de outubro", mesmo tendo subido o arquivo em novembro.
-  const filteredBatches = useMemo(() => {
-    const all = batchesQuery.data ?? [];
-    if (!batchFilter) return all;
-    return all.filter((batch) => periodKeyOf(batch.periodStart ?? batch.createdAt) === batchFilter);
-  }, [batchesQuery.data, batchFilter]);
-
-  const visibleBatches = showAllBatches ? filteredBatches : filteredBatches.slice(0, 3);
-  const hiddenCount = filteredBatches.length - visibleBatches.length;
+  // Aqui ficam só os 3 últimos. A lista inteira, com os filtros de ano e mês, é a tela
+  // de Importações — esta precisa continuar sendo sobre conferir o mês.
+  const allBatches = batchesQuery.data ?? [];
+  const recentBatches = allBatches.slice(0, 3);
+  const hiddenCount = allBatches.length - recentBatches.length;
 
   function resetEntryForm() {
     setReason(null);
@@ -584,69 +567,23 @@ export default function ImportsScreen() {
             <Ionicons name="time-outline" size={18} color={colors.primary} />
             <Text style={styles.summaryTitle}>Histórico de importações</Text>
           </View>
-          {filteredBatches.length > 0 ? (
-            <Text style={styles.sectionHeaderCount}>{filteredBatches.length}</Text>
+          {allBatches.length > 0 ? (
+            <Text style={styles.sectionHeaderCount}>{allBatches.length}</Text>
           ) : null}
         </View>
-
-        {batchMonths.length > 1 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.filterRow}
-          >
-            <TouchableOpacity
-              style={[styles.filterPill, batchFilter === null && styles.filterPillActive]}
-              activeOpacity={0.8}
-              onPress={() => {
-                setBatchFilter(null);
-                setShowAllBatches(false);
-              }}
-            >
-              <Text
-                style={[styles.filterPillText, batchFilter === null && styles.filterPillTextActive]}
-              >
-                Todos
-              </Text>
-            </TouchableOpacity>
-
-            {batchMonths.map((month) => (
-              <TouchableOpacity
-                key={month}
-                style={[styles.filterPill, batchFilter === month && styles.filterPillActive]}
-                activeOpacity={0.8}
-                onPress={() => {
-                  setBatchFilter(month);
-                  setShowAllBatches(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.filterPillText,
-                    batchFilter === month && styles.filterPillTextActive,
-                  ]}
-                >
-                  {periodLabel(month)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        ) : null}
 
         {batchesQuery.isPending ? (
           <ActivityIndicator color={colors.primary} style={styles.historyLoader} />
         ) : batchesQuery.isError ? (
           <ErrorState error={batchesQuery.error} onRetry={batchesQuery.refetch} />
-        ) : filteredBatches.length === 0 ? (
+        ) : allBatches.length === 0 ? (
           <View style={styles.card}>
             <Text style={styles.historyEmpty}>
-              {batchFilter
-                ? `Nenhuma importação de ${periodLabel(batchFilter)}.`
-                : 'Nenhum arquivo importado ainda. Comece pelos dois relatórios do mês.'}
+              Nenhum arquivo importado ainda. Comece pelos dois relatórios do mês.
             </Text>
           </View>
         ) : (
-          visibleBatches.map((batch) => (
+          recentBatches.map((batch) => (
             <View key={batch._id} style={styles.batchCard}>
               <View style={styles.batchHeader}>
                 <View style={styles.batchTitleCol}>
@@ -702,19 +639,10 @@ export default function ImportsScreen() {
           <TouchableOpacity
             style={styles.secondaryActionBtn}
             activeOpacity={0.8}
-            onPress={() => setShowAllBatches(true)}
+            onPress={() => navigation.navigate('ImportHistory')}
           >
             <Text style={styles.secondaryActionText}>Ver mais {hiddenCount}</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        {showAllBatches && filteredBatches.length > 3 ? (
-          <TouchableOpacity
-            style={styles.secondaryActionBtn}
-            activeOpacity={0.8}
-            onPress={() => setShowAllBatches(false)}
-          >
-            <Text style={styles.secondaryActionText}>Mostrar menos</Text>
+            <Ionicons name="arrow-forward" size={15} color={colors.primary} />
           </TouchableOpacity>
         ) : null}
 
@@ -1142,12 +1070,15 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   secondaryActionBtn: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
     backgroundColor: '#FFFFFF',
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.borderWhisper,
     paddingVertical: 11,
-    alignItems: 'center',
   },
   secondaryActionText: {
     fontFamily: typography.fonts.bodySemiBold,
@@ -1354,30 +1285,5 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.bodySemiBold,
     fontSize: 11,
     color: colors.graphiteMuted,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingBottom: 12,
-  },
-  filterPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    borderColor: colors.surfaceContainer,
-    backgroundColor: colors.surfaceCanvas,
-  },
-  filterPillActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.lavenderTint,
-  },
-  filterPillText: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-  },
-  filterPillTextActive: {
-    color: colors.violetRoyal,
   },
 });

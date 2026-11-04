@@ -24,6 +24,7 @@ import TransactionsScreen from '../screens/main/TransactionsScreen';
 import ReportsScreen from '../screens/main/ReportsScreen';
 import ImportsScreen from '../screens/main/ImportsScreen';
 import NewTransactionScreen from '../screens/main/NewTransactionScreen';
+import ImportHistoryScreen from '../screens/main/ImportHistoryScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 
 // Telas de Ajustes
@@ -192,6 +193,11 @@ export default function AppNavigator() {
               name="Categories"
               component={CategoriesScreen}
               options={{ ...stackHeaderOptions, title: 'Categorias' }}
+            />
+            <RootStack.Screen
+              name="ImportHistory"
+              component={ImportHistoryScreen}
+              options={{ ...stackHeaderOptions, title: 'Importações' }}
             />
           </>
         )}
