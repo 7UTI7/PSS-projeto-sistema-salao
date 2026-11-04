@@ -36,6 +36,7 @@ import type {
   SheetTable,
   SkippedRow,
 } from './import.types.js';
+import { looksLike } from './report.reader.js';
 import { normalizeHeader, parseAmount, parseSpreadsheetDate } from './spreadsheet.reader.js';
 import { cellText, isBlankRow, locateTable, type ColumnAliases } from './table-locator.js';
 
@@ -121,10 +122,17 @@ export function parseInfinitePayStatement(tables: SheetTable[], options: ParseOp
   // Duas formas do MESMO extrato. A planilha/CSV traz cabeçalho de colunas, então é lida
   // por nome; o PDF não traz, e é lido pela posição relativa das células. Tentar primeiro
   // o cabeçalho é o que distingue um do outro.
-  const tabular = readTabularMovements(tables);
-  const { movements, skipped } = tabular ?? readMovements(tables);
+  const { movements, skipped } = readTabularMovements(tables) ?? readMovements(tables);
 
   if (movements.length === 0) {
+    if (looksLike(tables) === 'booksy') {
+      throw new AppError(
+        'Este arquivo é o relatório do Booksy, não o extrato da InfinitePay. '
+          + 'Troque os dois de campo: o da InfinitePay é o das movimentações da conta.',
+        400,
+        'FILES_SWAPPED',
+      );
+    }
     throw new AppError(
       'Não encontrei movimentações neste extrato. Confira se é o "Relatório de '
         + 'movimentações" da InfinitePay, exportado pelo aplicativo.',
@@ -139,21 +147,35 @@ export function parseInfinitePayStatement(tables: SheetTable[], options: ParseOp
   const transfers: Movement[] = [];
   const used = new Map<string, number>();
 
-  // Como saber que uma saída foi para a conta do salão, e não para um fornecedor:
+  // Que saída foi para a conta do salão, e qual foi pagamento a terceiro?
   //
-  // - No PDF, pelo nome: o cabeçalho declara o titular da conta e a contraparte é
-  //   comparada com ele. É a regra exata.
-  // - Na planilha/CSV não há cabeçalho com o titular, então TODA saída conta como
-  //   retirada. É o que os extratos reais mostram (as saídas eram todas para a própria
-  //   conta), e é decisão da dona. A consequência está registrada: um pagamento a
-  //   fornecedor feito por ali entraria como retirada e ficaria fora do DRE. A descrição
-  //   da linha guarda a contraparte, então dá para notar na lista.
-  const isWithdrawal = tabular
-    ? (movement: Movement) => movement.amount < 0
-    : (movement: Movement) => isOwnTransfer(movement, summary.accountHolder);
+  // O sinal exato é o nome: o PDF declara o titular no cabeçalho e a contraparte é
+  // comparada com ele. Quando funciona, distingue de verdade — um Pix a fornecedor segue
+  // sendo despesa do salão e conta no DRE.
+  //
+  // Só que esse sinal não está sempre lá. Na planilha/CSV não há cabeçalho com o titular.
+  // E mesmo no PDF ele pode não casar: numa conta de CNPJ que transfere para a conta
+  // pessoal os dois nomes são diferentes de verdade (num extrato de teste o titular é
+  // "EMPRESA ... LTDA" e a contraparte é o nome da pessoa). Nos extratos reais da dona o
+  // nome casa porque a conta está no nome dela.
+  //
+  // Então: se ALGUM movimento casa com o titular, o nome informa e vale a regra exata. Se
+  // nenhum casa, o nome não informa nada, e aí toda saída conta como retirada — que é a
+  // decisão da dona. A consequência está registrada: nesse caso um pagamento a fornecedor
+  // entraria como retirada e ficaria fora do DRE; a descrição guarda a contraparte, então
+  // dá para notar na lista de Lançamentos.
+  const holderIsUseful = summary.accountHolder !== null
+    && movements.some((movement) => isOwnTransfer(movement, summary.accountHolder));
 
   for (const movement of movements) {
-    if (isWithdrawal(movement)) {
+    const own = isOwnTransfer(movement, summary.accountHolder);
+    const isWithdrawal = movement.amount < 0 && (holderIsUseful ? own : true);
+    // A entrada só é aporte quando o nome diz que é: dinheiro que ela mesma põe na conta
+    // não é receita de atendimento, e sem o nome não há como distinguir de um Pix de
+    // cliente — então, na dúvida, conta como receita e a auditoria cobra a explicação.
+    const isOwnDeposit = movement.amount > 0 && own;
+
+    if (isWithdrawal || isOwnDeposit) {
       transfers.push(movement);
       rows.push(toOwnTransferRow(movement, used));
       continue;

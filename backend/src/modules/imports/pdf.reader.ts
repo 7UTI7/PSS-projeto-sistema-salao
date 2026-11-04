@@ -48,11 +48,21 @@ interface PdfObject {
 }
 
 interface FontInfo {
-  /** CID -> texto, a partir do /ToUnicode. */
+  /** Código -> texto. Vem do /ToUnicode na fonte composta, da codificação na simples. */
   cmap: ReadonlyMap<number, string>;
-  /** CID -> largura em milésimos do corpo da fonte, a partir do /W. */
+  /** Código -> largura em milésimos do corpo da fonte. */
   widths: ReadonlyMap<number, number>;
   defaultWidth: number;
+  /**
+   * Quantos bytes formam um código no texto mostrado.
+   *
+   * 2 na fonte composta (Type0/Identity-H), que é o que o aplicativo da InfinitePay
+   * exporta. 1 na fonte simples (Type1/TrueType, como a Helvetica), usada por outras
+   * ferramentas que geram PDF. Ler uma simples de dois em dois bytes juntava dois
+   * caracteres num código inexistente, nenhum glifo era reconhecido e o extrato era
+   * recusado como "PDF digitalizado".
+   */
+  bytesPerCode: 1 | 2;
 }
 
 interface Glyph {
@@ -167,16 +177,102 @@ function inflateObject(object: PdfObject | undefined, buffer: Buffer): string | 
   if (!object?.stream || object.stream.length <= 0) return null;
   const data = buffer.subarray(object.stream.start, object.stream.start + object.stream.length);
 
-  if (!object.dict.includes('/FlateDecode')) return data.toString('latin1');
+  const filters = readFilters(object.dict);
+  if (filters.length === 0) return data.toString('latin1');
 
   // Predictor é usado em xref streams e imagens, nunca nos streams de texto que interessam aqui.
   if (/\/Predictor\s+([2-9]|\d\d)/.test(object.dict)) return null;
 
-  try {
-    return Buffer.from(unzlibSync(new Uint8Array(data))).toString('latin1');
-  } catch {
-    return null;
+  let decoded: Buffer = data;
+  for (const filter of filters) {
+    const next = applyFilter(filter, decoded);
+    if (next === null) return null;
+    decoded = next;
   }
+  return decoded.toString('latin1');
+}
+
+/**
+ * Filtros do stream, na ordem em que precisam ser desfeitos.
+ *
+ * O PDF aceita um nome só (`/Filter /FlateDecode`) ou uma CADEIA
+ * (`/Filter [ /ASCII85Decode /FlateDecode ]`), e a ordem do array é a ordem de aplicação
+ * — logo, a ordem de remoção. Ler só o primeiro nome que aparece no dicionário fazia o
+ * leitor tentar descomprimir bytes que ainda estavam em ASCII85: a descompressão
+ * falhava, a página saía sem texto e o extrato era recusado como "PDF digitalizado".
+ *
+ * O aplicativo da InfinitePay exporta com FlateDecode puro, então isso só aparecia em
+ * PDF gerado por outra ferramenta.
+ */
+function readFilters(dict: string): string[] {
+  const array = /\/Filter\s*\[([^\]]*)\]/.exec(dict);
+  if (array) return [...(array[1] ?? '').matchAll(/\/(\w+)/g)].map((match) => match[1] ?? '');
+
+  const single = /\/Filter\s*\/(\w+)/.exec(dict);
+  return single?.[1] ? [single[1]] : [];
+}
+
+function applyFilter(filter: string, data: Buffer): Buffer | null {
+  if (filter === 'FlateDecode') {
+    try {
+      return Buffer.from(unzlibSync(new Uint8Array(data)));
+    } catch {
+      return null;
+    }
+  }
+  if (filter === 'ASCII85Decode') return decodeAscii85(data);
+  if (filter === 'ASCIIHexDecode') return decodeAsciiHex(data);
+  // DCTDecode, JPXDecode e afins são imagem: não há texto a extrair.
+  return null;
+}
+
+/** ASCII85 conforme a especificação do PDF: grupos de 5 caracteres viram 4 bytes. */
+function decodeAscii85(data: Buffer): Buffer | null {
+  const text = data.toString('latin1');
+  const body = text.slice(text.startsWith('<~') ? 2 : 0);
+  const out: number[] = [];
+  let group: number[] = [];
+
+  for (const char of body) {
+    if (char === '~') break; // "~>" encerra o dado.
+    if (/\s/.test(char)) continue;
+    // 'z' abrevia quatro bytes zero, e só vale no começo de um grupo.
+    if (char === 'z' && group.length === 0) {
+      out.push(0, 0, 0, 0);
+      continue;
+    }
+    const digit = char.charCodeAt(0) - 33;
+    if (digit < 0 || digit > 84) return null;
+    group.push(digit);
+    if (group.length === 5) {
+      pushAscii85Group(group, 4, out);
+      group = [];
+    }
+  }
+
+  if (group.length === 1) return null; // Grupo final de um caractere é inválido.
+  if (group.length > 1) {
+    const missing = 5 - group.length;
+    // O grupo final é completado com 'u' (84) e rende um byte menos por caractere ausente.
+    pushAscii85Group([...group, ...Array<number>(missing).fill(84)], 4 - missing, out);
+  }
+
+  return Buffer.from(out);
+}
+
+function pushAscii85Group(group: readonly number[], bytes: number, out: number[]): void {
+  let value = 0;
+  for (const digit of group) value = value * 85 + digit;
+  const quad = [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff];
+  for (let index = 0; index < bytes; index += 1) out.push(quad[index] ?? 0);
+}
+
+function decodeAsciiHex(data: Buffer): Buffer | null {
+  const digits = data.toString('latin1').split('>')[0]?.replace(/\s/g, '') ?? '';
+  if (/[^0-9a-fA-F]/.test(digits)) return null;
+  // Um dígito sobrando é completado com zero, como manda a especificação.
+  const even = digits.length % 2 === 0 ? digits : `${digits}0`;
+  return Buffer.from(even, 'hex');
 }
 
 /**
@@ -249,10 +345,18 @@ function pageFonts(
   if (external) source = objects.get(Number(external[1]))?.dict ?? dict;
 
   const fonts = new Map<string, FontInfo>();
-  const block = /\/Font\s*<<([\s\S]*?)>>/.exec(source);
-  if (!block) return fonts;
 
-  for (const match of (block[1] ?? '').matchAll(/\/([A-Za-z0-9]+)\s+(\d+)\s+0\s+R/g)) {
+  // /Font pode vir embutido ("/Font << /F1 2 0 R >>") ou como referência
+  // ("/Font 1 0 R"). Só o embutido era lido, então num PDF com a referência a página
+  // ficava sem fonte nenhuma e nada era extraído.
+  let entries = /\/Font\s*<<([\s\S]*?)>>/.exec(source)?.[1] ?? null;
+  if (entries === null) {
+    const reference = /\/Font\s+(\d+)\s+0\s+R/.exec(source);
+    entries = reference ? objects.get(Number(reference[1]))?.dict ?? null : null;
+  }
+  if (entries === null) return fonts;
+
+  for (const match of entries.matchAll(/\/([A-Za-z0-9]+)\s+(\d+)\s+0\s+R/g)) {
     const name = match[1];
     const reference = Number(match[2]);
     if (!name) continue;
@@ -269,6 +373,9 @@ function loadFont(reference: number, objects: Map<number, PdfObject>, buffer: Bu
   const font = objects.get(reference);
   if (!font) return null;
 
+  const composite = /\/Subtype\s*\/Type0\b/.test(font.dict) || /\/DescendantFonts/.test(font.dict);
+  if (!composite) return loadSimpleFont(font.dict);
+
   const toUnicode = /\/ToUnicode\s+(\d+)\s+0\s+R/.exec(font.dict);
   const cmap = toUnicode
     ? parseToUnicode(inflateObject(objects.get(Number(toUnicode[1])), buffer) ?? '')
@@ -283,8 +390,79 @@ function loadFont(reference: number, objects: Map<number, PdfObject>, buffer: Bu
     cmap,
     widths: parseWidths(widthSource),
     defaultWidth: Number(/\/DW\s+(-?[\d.]+)/.exec(widthSource)?.[1] ?? 1000),
+    bytesPerCode: 2,
   };
 }
+
+/**
+ * Fonte simples (Type1, TrueType): um byte por caractere, e o byte já é o código.
+ *
+ * Não há /ToUnicode para consultar — o texto sai da codificação declarada. WinAnsi e
+ * Latin-1 só divergem na faixa 0x80–0x9F, que guarda aspas e travessões tipográficos;
+ * fora dela, o byte é o próprio ponto de código Unicode.
+ */
+function loadSimpleFont(dict: string): FontInfo {
+  const winAnsi = !/\/Encoding\s*\/MacRomanEncoding\b/.test(dict);
+  const cmap = new Map<number, string>();
+
+  for (let code = 32; code <= 255; code += 1) {
+    const text = winAnsi ? (CP1252_HIGH.get(code) ?? String.fromCharCode(code)) : String.fromCharCode(code);
+    cmap.set(code, text);
+  }
+
+  // /Differences remapeia códigos por nome de glifo. Só os nomes /uniXXXX são
+  // traduzíveis sem carregar a tabela de nomes Adobe inteira; qualquer outro nome fica
+  // com o caractere da codificação base, que é o que estava ali antes.
+  const differences = /\/Differences\s*\[([\s\S]*?)\]/.exec(dict)?.[1];
+  if (differences) {
+    let code = 0;
+    for (const token of differences.matchAll(/(\d+)|\/(\S+)/g)) {
+      if (token[1] !== undefined) {
+        code = Number(token[1]);
+        continue;
+      }
+      const uni = /^uni([0-9A-Fa-f]{4})$/.exec(token[2] ?? '');
+      if (uni?.[1]) cmap.set(code, String.fromCharCode(parseInt(uni[1], 16)));
+      code += 1;
+    }
+  }
+
+  return {
+    cmap,
+    widths: parseSimpleWidths(dict),
+    // As 14 fontes padrão do PDF (Helvetica entre elas) não trazem /Widths: o leitor
+    // deveria conhecê-las de cor. Uma largura média serve porque cada célula do extrato
+    // é desenhada com a sua própria matriz de texto, então a posição que importa vem do
+    // Tm e não do acúmulo de larguras.
+    defaultWidth: 500,
+    bytesPerCode: 1,
+  };
+}
+
+/** /FirstChar + /Widths: a largura do código N está em Widths[N - FirstChar]. */
+function parseSimpleWidths(dict: string): Map<number, number> {
+  const widths = new Map<number, number>();
+  const list = /\/Widths\s*\[([\s\S]*?)\]/.exec(dict)?.[1];
+  if (!list) return widths;
+
+  const first = Number(/\/FirstChar\s+(\d+)/.exec(dict)?.[1] ?? 0);
+  const values = [...list.matchAll(/-?[\d.]+/g)].map((match) => Number(match[0]));
+  values.forEach((value, offset) => {
+    if (Number.isFinite(value)) widths.set(first + offset, value);
+  });
+  return widths;
+}
+
+/** Os 32 códigos em que WinAnsi (CP1252) difere de Latin-1. */
+const CP1252_HIGH: ReadonlyMap<number, string> = new Map([
+  [0x80, '\u20AC'], [0x82, '\u201A'], [0x83, '\u0192'], [0x84, '\u201E'],
+  [0x85, '\u2026'], [0x86, '\u2020'], [0x87, '\u2021'], [0x88, '\u02C6'],
+  [0x89, '\u2030'], [0x8A, '\u0160'], [0x8B, '\u2039'], [0x8C, '\u0152'],
+  [0x8E, '\u017D'], [0x91, '\u2018'], [0x92, '\u2019'], [0x93, '\u201C'],
+  [0x94, '\u201D'], [0x95, '\u2022'], [0x96, '\u2013'], [0x97, '\u2014'],
+  [0x98, '\u02DC'], [0x99, '\u2122'], [0x9A, '\u0161'], [0x9B, '\u203A'],
+  [0x9C, '\u0153'], [0x9E, '\u017E'], [0x9F, '\u0178'],
+]);
 
 /**
  * O /ToUnicode é um CMap em PostScript. Só os blocos bfchar (um a um) e bfrange (faixas)
@@ -415,8 +593,11 @@ function extractGlyphs(content: string, fonts: Map<string, FontInfo>): Glyph[] {
       }
       if (item.kind !== 'bytes') continue;
 
-      for (let index = 0; index + 1 < item.value.length; index += 2) {
-        const cid = ((item.value[index] ?? 0) << 8) | (item.value[index + 1] ?? 0);
+      const step = font.bytesPerCode;
+      for (let index = 0; index + step - 1 < item.value.length; index += step) {
+        const cid = step === 1
+          ? (item.value[index] ?? 0)
+          : ((item.value[index] ?? 0) << 8) | (item.value[index + 1] ?? 0);
         const device = multiply(textMatrix, ctm);
         const scale = Math.hypot(device[0], device[1]) || 1;
         const width = ((font.widths.get(cid) ?? font.defaultWidth) / 1000) * size;

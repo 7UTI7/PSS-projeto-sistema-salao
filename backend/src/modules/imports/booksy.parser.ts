@@ -11,6 +11,7 @@
 import { AppError } from '../../shared/utils/app-error.js';
 import type { PaymentMethod, Professional } from '../../models/transaction.model.js';
 import type { ParseOptions, ParseOutcome, ParsedRow, SheetTable, SkippedRow } from './import.types.js';
+import { looksLike } from './report.reader.js';
 import { normalizeHeader } from './spreadsheet.reader.js';
 import { cellAmount, cellDate, cellText, findSheet, isBlankRow, locateTable } from './table-locator.js';
 
@@ -76,6 +77,14 @@ export function parseBooksyReport(tables: SheetTable[], options: ParseOptions): 
     ?? tables.find((table) => table.rows.some((row) => row.some((cell) => normalizeHeader(cell) === 'id da reserva')));
 
   if (!sheet) {
+    if (looksLike(tables) === 'infinitepay') {
+      throw new AppError(
+        'Este arquivo é o extrato da InfinitePay, não o relatório do Booksy. '
+          + 'Troque os dois de campo: o do Booksy é o dos atendimentos.',
+        400,
+        'FILES_SWAPPED',
+      );
+    }
     throw new AppError(
       'Não encontrei a aba "Lista de agendamentos" no relatório do Booksy. '
         + `Abas do arquivo: ${tables.map((table) => table.name).join(' | ')}.`,
