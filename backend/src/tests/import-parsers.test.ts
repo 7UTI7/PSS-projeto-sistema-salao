@@ -156,7 +156,7 @@ describe('parseBooksyReport', () => {
     expect(skipped.every((entry) => entry.reason.length > 0)).toBe(true);
   });
 
-  it('ignora a linha sem profissional cadastrada, informando o motivo', () => {
+  it('importa a linha mesmo sem reconhecer a profissional, só não a atribui', () => {
     const tables = [{
       name: 'Lista de agendamentos',
       rows: [
@@ -166,10 +166,17 @@ describe('parseBooksyReport', () => {
       ],
     }];
 
+    // O dinheiro é real mesmo quando o nome não é conhecido. Descartar a linha fazia o
+    // mês inteiro sumir quando o relatório vinha com um nome fora do cadastro.
     const { rows, skipped } = parseBooksyReport(tables, options);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.description).toBe('Pé Simples');
-    expect(skipped[0]?.reason).toContain('Camila Santos');
+    expect(rows).toHaveLength(2);
+    expect(skipped).toHaveLength(0);
+
+    const desconhecida = rows.find((row) => row.description === 'Mão Simples');
+    expect(desconhecida?.professional).toBeUndefined();
+    expect(desconhecida?.grossAmount).toBe(30);
+
+    expect(rows.find((row) => row.description === 'Pé Simples')?.professional).toBe('Nicolle');
   });
 
   it('limita o desconto ao valor bruto (cortesia lançada como desconto cheio)', () => {

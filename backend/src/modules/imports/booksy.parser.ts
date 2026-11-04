@@ -105,15 +105,14 @@ export function parseBooksyReport(tables: SheetTable[], options: ParseOptions): 
       return;
     }
 
+    // Nome desconhecido NÃO descarta o atendimento: o dinheiro é real de qualquer
+    // forma, e descartar fazia o mês inteiro sumir quando o relatório vinha com um nome
+    // que o sistema não conhece. A linha entra sem profissional atribuída — só não
+    // aparece na divisão de receitas por pessoa.
+    //
+    // Antes isso barrava a linha porque a comissão dependia de saber quem atendeu; o
+    // estúdio não trabalha mais com comissão, então a atribuição virou informação.
     const professional = resolveProfessional(cellText(row, table.columns.get('professional')));
-    if (!professional) {
-      const raw = cellText(row, table.columns.get('professional'));
-      skipped.push({
-        line,
-        reason: `Profissional "${raw || 'não informado'}" não está cadastrada no sistema.`,
-      });
-      return;
-    }
 
     const serviceAmount = cellAmount(row, table.columns.get('serviceAmount')) ?? 0;
     const addonAmount = cellAmount(row, table.columns.get('addonAmount')) ?? 0;
@@ -171,7 +170,7 @@ export function parseBooksyReport(tables: SheetTable[], options: ParseOptions): 
       type: 'receita',
       description,
       category: cellText(row, table.columns.get('category')) || 'Serviços',
-      professional,
+      ...(professional ? { professional } : {}),
       grossAmount,
       discountAmount,
       paymentFeeRate,

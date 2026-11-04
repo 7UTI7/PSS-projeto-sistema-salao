@@ -9,11 +9,24 @@ import { AppError } from '../utils/app-error.js';
 export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.txt', '.tsv', '.pdf'];
+// Cada seletor de arquivo informa o MIME do CSV com um nome diferente, e todos os
+// apelidos abaixo foram vistos em aparelho real: o Android manda
+// "text/comma-separated-values", o Windows manda "application/vnd.ms-excel" e o Drive às
+// vezes manda só "application/octet-stream". O app já oferecia esses tipos no seletor,
+// então recusá-los aqui deixava a dona escolher um arquivo que o servidor rejeitava.
+//
+// Isto é triagem, não validação: quem decide o formato é o readReport, pelo conteúdo.
 const ALLOWED_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.ms-excel',
   'application/octet-stream',
+  'application/zip',
   'text/csv',
+  'application/csv',
+  'text/comma-separated-values',
+  'text/x-comma-separated-values',
+  'text/x-csv',
+  'application/x-csv',
   'text/plain',
   'text/tab-separated-values',
   'application/pdf',

@@ -36,7 +36,8 @@ import type {
   SheetTable,
   SkippedRow,
 } from './import.types.js';
-import { normalizeHeader, parseAmount } from './spreadsheet.reader.js';
+import { normalizeHeader, parseAmount, parseSpreadsheetDate } from './spreadsheet.reader.js';
+import { cellText, isBlankRow, locateTable, type ColumnAliases } from './table-locator.js';
 
 /** Categorias criadas por esta origem, separadas por natureza do movimento. */
 export const PIX_INCOME_CATEGORY = 'Recebimentos Pix';
@@ -73,6 +74,22 @@ const NOISE = [
   'cloudwalk',
 ];
 
+/**
+ * Colunas do mesmo extrato exportado como planilha/CSV em vez de PDF. São as colunas que
+ * o próprio aplicativo escreve; os apelidos cobrem apenas variações de grafia e acento.
+ */
+const TABLE_COLUMNS: ColumnAliases = {
+  date: ['data'],
+  time: ['hora'],
+  kind: ['tipo de transacao', 'tipo'],
+  counterparty: ['nome'],
+  detail: ['detalhe'],
+  amount: ['valor r', 'valor', 'valor em r', 'valor r$'],
+};
+
+/** Sem data, tipo e valor não há movimento para ler. */
+const TABLE_REQUIRED = ['date', 'kind', 'amount'];
+
 interface Movement {
   line: number;
   page: string;
@@ -100,12 +117,17 @@ export function parseInfinitePayStatement(tables: SheetTable[], options: ParseOp
   void options; // A comissão não se aplica: o extrato não diz quem atendeu.
 
   const summary = readSummary(tables);
-  const { movements, skipped } = readMovements(tables);
+
+  // Duas formas do MESMO extrato. A planilha/CSV traz cabeçalho de colunas, então é lida
+  // por nome; o PDF não traz, e é lido pela posição relativa das células. Tentar primeiro
+  // o cabeçalho é o que distingue um do outro.
+  const tabular = readTabularMovements(tables);
+  const { movements, skipped } = tabular ?? readMovements(tables);
 
   if (movements.length === 0) {
     throw new AppError(
-      'Não encontrei movimentações neste PDF. Confira se é o "Relatório de movimentações" '
-        + 'da InfinitePay, exportado pelo aplicativo.',
+      'Não encontrei movimentações neste extrato. Confira se é o "Relatório de '
+        + 'movimentações" da InfinitePay, exportado pelo aplicativo.',
       400,
       'STATEMENT_WITHOUT_MOVEMENTS',
     );
@@ -117,8 +139,21 @@ export function parseInfinitePayStatement(tables: SheetTable[], options: ParseOp
   const transfers: Movement[] = [];
   const used = new Map<string, number>();
 
+  // Como saber que uma saída foi para a conta do salão, e não para um fornecedor:
+  //
+  // - No PDF, pelo nome: o cabeçalho declara o titular da conta e a contraparte é
+  //   comparada com ele. É a regra exata.
+  // - Na planilha/CSV não há cabeçalho com o titular, então TODA saída conta como
+  //   retirada. É o que os extratos reais mostram (as saídas eram todas para a própria
+  //   conta), e é decisão da dona. A consequência está registrada: um pagamento a
+  //   fornecedor feito por ali entraria como retirada e ficaria fora do DRE. A descrição
+  //   da linha guarda a contraparte, então dá para notar na lista.
+  const isWithdrawal = tabular
+    ? (movement: Movement) => movement.amount < 0
+    : (movement: Movement) => isOwnTransfer(movement, summary.accountHolder);
+
   for (const movement of movements) {
-    if (isOwnTransfer(movement, summary.accountHolder)) {
+    if (isWithdrawal(movement)) {
       transfers.push(movement);
       rows.push(toOwnTransferRow(movement, used));
       continue;
@@ -196,6 +231,66 @@ function readSummary(tables: SheetTable[]): StatementSummary {
 function accountHolder(text: string): string | null {
   const match = /^[\d.\s/-]*?([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'\s]{4,})\s+-\s+(?:CNPJ|CPF)\b/.exec(text.trim());
   return match?.[1]?.trim() ?? null;
+}
+
+/**
+ * Lê o extrato exportado como planilha ou CSV, pelo nome das colunas.
+ *
+ * Devolve null quando nenhuma aba tem o cabeçalho esperado — é assim que o PDF, que não
+ * tem cabeçalho de coluna, cai no leitor posicional sem precisar de uma flag de formato.
+ */
+function readTabularMovements(
+  tables: SheetTable[],
+): { movements: Movement[]; skipped: SkippedRow[] } | null {
+  for (const table of tables) {
+    let located;
+    try {
+      located = locateTable(table, TABLE_COLUMNS, TABLE_REQUIRED);
+    } catch {
+      continue; // Esta aba não é a tabela de movimentações; tenta a próxima.
+    }
+
+    const movements: Movement[] = [];
+    const skipped: SkippedRow[] = [];
+
+    located.dataRows.forEach((row, offset) => {
+      const line = located.headerLine + offset + 1;
+      if (isBlankRow(row)) return;
+
+      const date = parseSpreadsheetDate(cellText(row, located.columns.get('date')));
+      if (!date) return; // Linha de total ou rodapé: não tem data.
+
+      // Aqui o valor NÃO exige sinal explícito: a planilha escreve "90,00" para entrada e
+      // "-250,00" para saída, enquanto o PDF escreve "+ 90,00". Por isso este leitor não
+      // reusa signedAmount, que usa o sinal para distinguir valor de texto.
+      const amount = parseAmount(cellText(row, located.columns.get('amount')));
+      if (amount === null || amount === 0) {
+        skipped.push({ line, reason: `${table.name}: não consegui ler o valor desta linha.` });
+        return;
+      }
+
+      const time = /^(\d{1,2}):(\d{2})/.exec(cellText(row, located.columns.get('time')));
+      movements.push({
+        line,
+        page: table.name,
+        occurredAt: new Date(Date.UTC(
+          date.getUTCFullYear(),
+          date.getUTCMonth(),
+          date.getUTCDate(),
+          time ? Number(time[1]) : 0,
+          time ? Number(time[2]) : 0,
+        )),
+        kind: cellText(row, located.columns.get('kind')),
+        counterparty: cellText(row, located.columns.get('counterparty')),
+        detail: cellText(row, located.columns.get('detail')),
+        amount,
+      });
+    });
+
+    if (movements.length > 0) return { movements, skipped };
+  }
+
+  return null;
 }
 
 function readMovements(tables: SheetTable[]): { movements: Movement[]; skipped: SkippedRow[] } {
