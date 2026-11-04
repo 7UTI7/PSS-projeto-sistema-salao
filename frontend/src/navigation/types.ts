@@ -11,7 +11,6 @@ export type MainTabParamList = {
   Transactions: undefined;
   Reports: undefined;
   Imports: undefined;
-  Inventory: undefined;
 };
 
 export type RootStackParamList = {

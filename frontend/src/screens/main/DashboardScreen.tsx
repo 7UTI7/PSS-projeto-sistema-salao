@@ -21,7 +21,6 @@ import { useAuthStore } from '../../store/authStore';
 import { usePeriodStore } from '../../store/periodStore';
 import { profitMargin, summarizeCashFlow } from '../../services/report.service';
 import { MONTHLY_REVENUE_GOAL } from '../../config/studio.config';
-import { LOW_STOCK_ITEMS } from '../../data/inventory.mock';
 import {
   formatCurrency,
   formatPercent,
@@ -337,38 +336,6 @@ export default function DashboardScreen() {
             </View>
           )}
         </View>
-
-        {/* ALERTA DE REPOSIÇÃO: dados locais — não há módulo de estoque na API. */}
-        {LOW_STOCK_ITEMS.length > 0 ? (
-          <View style={styles.alertCard}>
-            <View style={styles.alertIconBox}>
-              <Ionicons name="warning-outline" size={20} color={colors.statusWarning} />
-            </View>
-            <View style={styles.alertCol}>
-              <View style={styles.alertHeader}>
-                <Text style={styles.alertTitle}>Alerta de Reposição</Text>
-                <View style={styles.alertBadge}>
-                  <Text style={styles.alertBadgeText}>{LOW_STOCK_ITEMS.length} ITENS</Text>
-                </View>
-              </View>
-              <Text style={styles.alertDesc}>
-                Estoque baixo:{' '}
-                <Text style={styles.boldText}>
-                  {LOW_STOCK_ITEMS.map((item) => item.name).join(', ')}
-                </Text>
-                .
-              </Text>
-              <TouchableOpacity
-                style={styles.alertAction}
-                activeOpacity={0.7}
-                onPress={() => navigation.navigate('Main', { screen: 'Inventory' })}
-              >
-                <Text style={styles.alertLink}>Ver Estoque</Text>
-                <Ionicons name="arrow-forward" size={14} color={colors.violetRoyal} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        ) : null}
 
         {/* LANÇAMENTOS RECENTES */}
         <View style={styles.recentSection}>
@@ -858,70 +825,6 @@ const styles = StyleSheet.create({
   shareFill: {
     height: '100%',
     borderRadius: 3,
-  },
-  alertCard: {
-    flexDirection: 'row',
-    gap: 12,
-    backgroundColor: colors.statusWarningBg,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    padding: 14,
-    marginBottom: 20,
-  },
-  alertIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: borderRadius.md,
-    backgroundColor: 'rgba(180, 83, 9, 0.12)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  alertCol: {
-    flex: 1,
-  },
-  alertHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  alertTitle: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: colors.statusWarning,
-  },
-  alertBadge: {
-    backgroundColor: 'rgba(180, 83, 9, 0.14)',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: borderRadius.xs,
-  },
-  alertBadgeText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 8,
-    color: colors.statusWarning,
-    letterSpacing: 0.5,
-  },
-  alertDesc: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteText,
-    marginTop: 4,
-    lineHeight: 16,
-  },
-  boldText: {
-    fontFamily: typography.fonts.bodyBold,
-  },
-  alertAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 8,
-  },
-  alertLink: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 11,
-    color: colors.violetRoyal,
   },
   recentSection: {
     marginBottom: 8,

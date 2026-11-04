@@ -22,7 +22,6 @@ import DashboardScreen from '../screens/main/DashboardScreen';
 import TransactionsScreen from '../screens/main/TransactionsScreen';
 import ReportsScreen from '../screens/main/ReportsScreen';
 import ImportsScreen from '../screens/main/ImportsScreen';
-import InventoryScreen from '../screens/main/InventoryScreen';
 import NewTransactionScreen from '../screens/main/NewTransactionScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
 
@@ -42,7 +41,6 @@ const TAB_ICONS: Record<keyof MainTabParamList, [keyof typeof Ionicons.glyphMap,
   Transactions: ['receipt', 'receipt-outline'],
   Reports: ['analytics', 'analytics-outline'],
   Imports: ['cloud-upload', 'cloud-upload-outline'],
-  Inventory: ['cube', 'cube-outline'],
 };
 
 const stackHeaderOptions = {
@@ -133,7 +131,6 @@ function MainNavigator() {
       />
       <MainTab.Screen name="Reports" component={ReportsScreen} options={{ title: 'Relatórios' }} />
       <MainTab.Screen name="Imports" component={ImportsScreen} options={{ title: 'Importar' }} />
-      <MainTab.Screen name="Inventory" component={InventoryScreen} options={{ title: 'Estoque' }} />
     </MainTab.Navigator>
   );
 }
