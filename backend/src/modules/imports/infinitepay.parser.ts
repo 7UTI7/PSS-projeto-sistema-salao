@@ -18,7 +18,8 @@
 //    são Pix para "Nicolle Neris Rodrigues", que é a titular da conta: é ela tirando da
 //    conta do salão para a conta pessoal. Lançar isso como despesa faria o DRE mostrar
 //    resultado perto de zero todo mês, porque ela retira quase tudo o que entra. Então
-//    esses movimentos são somados e informados à parte (ver AsideTotal), não lançados.
+//    esses movimentos são gravados com `countsInDre: false`: ficam fora do DRE, mas
+//    datados e somáveis, porque é deles que sai o "Saldo Retirado" da auditoria.
 //    Pix enviado para terceiros, aí sim, é despesa.
 //
 // CUIDADO COM DUPLICIDADE EM RELAÇÃO AO BOOKSY
@@ -43,6 +44,10 @@ export const CARD_SALES_CATEGORY = 'Vendas na maquininha';
 export const PIX_EXPENSE_CATEGORY = 'Pagamentos Pix';
 export const OTHER_INCOME_CATEGORY = 'Outras entradas';
 export const OTHER_EXPENSE_CATEGORY = 'Outras saídas';
+/** Dinheiro que a titular tira da conta da InfinitePay. É o "Saldo Retirado". */
+export const WITHDRAWAL_CATEGORY = 'Retiradas para a conta do salão';
+/** O mesmo movimento no sentido contrário: ela pondo dinheiro de volta na conta. */
+export const OWNER_DEPOSIT_CATEGORY = 'Aportes da titular';
 
 const MONTHS: ReadonlyMap<string, number> = new Map([
   ['jan', 0], ['fev', 1], ['mar', 2], ['abr', 3], ['mai', 4], ['jun', 5],
@@ -115,19 +120,32 @@ export function parseInfinitePayStatement(tables: SheetTable[], options: ParseOp
   for (const movement of movements) {
     if (isOwnTransfer(movement, summary.accountHolder)) {
       transfers.push(movement);
+      rows.push(toOwnTransferRow(movement, used));
       continue;
     }
     rows.push(toParsedRow(movement, used));
   }
 
   const asides: AsideTotal[] = [];
-  if (transfers.length > 0) {
+  const withdrawals = transfers.filter((movement) => movement.amount < 0);
+  if (withdrawals.length > 0) {
     asides.push({
-      label: 'Transferências entre contas da titular',
-      count: transfers.length,
-      amount: round(transfers.reduce((total, movement) => total + movement.amount, 0)),
-      reason: 'Movimento entre contas da mesma pessoa, não é receita nem despesa do salão. '
-        + 'Não foi lançado para não distorcer o resultado.',
+      label: 'Retiradas para a conta do salão',
+      count: withdrawals.length,
+      amount: round(withdrawals.reduce((total, movement) => total + movement.amount, 0)),
+      reason: 'Dinheiro que saiu da conta da InfinitePay para a conta da titular. '
+        + 'É registrado e soma no "Saldo Retirado", mas fica fora do DRE: é troca de '
+        + 'bolso, não despesa do salão.',
+    });
+  }
+  const deposits = transfers.filter((movement) => movement.amount > 0);
+  if (deposits.length > 0) {
+    asides.push({
+      label: 'Aportes da titular na conta',
+      count: deposits.length,
+      amount: round(deposits.reduce((total, movement) => total + movement.amount, 0)),
+      reason: 'Dinheiro que a titular pôs na conta da InfinitePay. Também fica fora do '
+        + 'DRE, pelo mesmo motivo: não é receita de atendimento.',
     });
   }
 
@@ -362,6 +380,32 @@ function toParsedRow(movement: Movement, used: Map<string, number>): ParsedRow {
     // Extrato é dinheiro que já entrou ou saiu da conta: liquidado na data do movimento.
     settledAt: movement.occurredAt,
     status: 'liquidada',
+  };
+}
+
+/**
+ * Transferência entre as contas da própria titular. Vira lançamento para ficar datada e
+ * somável — é a origem do "Saldo Retirado" —, mas com `countsInDre: false`, porque não é
+ * resultado do salão.
+ */
+function toOwnTransferRow(movement: Movement, used: Map<string, number>): ParsedRow {
+  const outgoing = movement.amount < 0;
+  const isPix = normalizeHeader(movement.kind).includes('pix');
+
+  return {
+    externalId: uniqueId(movement, used),
+    type: outgoing ? 'despesa' : 'receita',
+    description: outgoing ? 'Retirada para a conta do salão' : 'Aporte da titular na conta',
+    category: outgoing ? WITHDRAWAL_CATEGORY : OWNER_DEPOSIT_CATEGORY,
+    grossAmount: Math.abs(movement.amount),
+    discountAmount: 0,
+    paymentFeeRate: 0,
+    professionalCommissionRate: 0,
+    paymentMethod: isPix ? 'pix' : 'nao_informado',
+    occurredAt: movement.occurredAt,
+    settledAt: movement.occurredAt,
+    status: 'liquidada',
+    countsInDre: false,
   };
 }
 

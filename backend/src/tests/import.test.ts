@@ -125,22 +125,31 @@ describe('POST /api/imports', () => {
     const response = await upload(token);
 
     expect(response.status).toBe(201);
-    expect(response.body.data.importedCount).toBe(3);
+    // 4 linhas: 3 de resultado e a retirada da titular, gravada fora do DRE.
+    expect(response.body.data.importedCount).toBe(4);
     expect(response.body.data.duplicateCount).toBe(0);
     expect(response.body.data.createdCategories)
-      .toEqual(['Recebimentos Pix', 'Vendas na maquininha']);
+      .toEqual(['Recebimentos Pix', 'Vendas na maquininha', 'Retiradas para a conta do salão']);
     expect(response.body.data.totals.grossAmount).toBeCloseTo(200, 2);
     expect(response.body.data.periodStart).toContain('2026-10-01');
     expect(response.body.data.periodEnd).toContain('2026-10-02');
 
-    // A transferência para a titular é informada, mas não entra como despesa.
+    // A retirada da titular é informada à parte e não soma nos totais do lote.
     expect(response.body.data.asides).toHaveLength(1);
     expect(response.body.data.asides[0].count).toBe(1);
     expect(response.body.data.asides[0].amount).toBeCloseTo(-150, 2);
 
-    const transactions = await Transaction.find({ deletedAt: null }).sort({ occurredAt: 1 }).lean();
+    const transactions = await Transaction.find({ deletedAt: null, countsInDre: true })
+      .sort({ occurredAt: 1 })
+      .lean();
     expect(transactions).toHaveLength(3);
     expect(transactions.every((transaction) => transaction.type === 'receita')).toBe(true);
+
+    // A retirada existe, fora do DRE, e é o que alimenta o "Saldo Retirado".
+    const withdrawal = await Transaction.findOne({ countsInDre: false, deletedAt: null }).lean();
+    expect(withdrawal?.category).toBe('Retiradas para a conta do salão');
+    expect(withdrawal?.grossAmount).toBeCloseTo(150, 2);
+    expect(withdrawal?.type).toBe('despesa');
     expect(transactions[0]?.origin).toBe('infinitepay');
     expect(transactions[0]?.grossAmount).toBeCloseTo(100, 2);
     expect(transactions[0]?.paymentMethod).toBe('pix');
@@ -160,7 +169,7 @@ describe('POST /api/imports', () => {
 
     const batch = await ImportBatch.findById(response.body.data.batchId).lean();
     expect(batch?.status).toBe('processed');
-    expect(batch?.importedCount).toBe(3);
+    expect(batch?.importedCount).toBe(4);
   });
 
   it('recusa o mesmo arquivo duas vezes (dedupe por hash)', async () => {
@@ -170,7 +179,7 @@ describe('POST /api/imports', () => {
 
     expect(second.status).toBe(409);
     expect(second.body.message).toContain('já foi importado');
-    expect(await Transaction.countDocuments({ deletedAt: null })).toBe(3);
+    expect(await Transaction.countDocuments({ deletedAt: null })).toBe(4);
   });
 
   it('não duplica linhas já importadas quando o arquivo muda', async () => {
@@ -190,8 +199,8 @@ describe('POST /api/imports', () => {
 
     expect(response.status).toBe(201);
     expect(response.body.data.importedCount).toBe(1);
-    expect(response.body.data.duplicateCount).toBe(3);
-    expect(await Transaction.countDocuments({ deletedAt: null })).toBe(4);
+    expect(response.body.data.duplicateCount).toBe(4);
+    expect(await Transaction.countDocuments({ deletedAt: null })).toBe(5);
   });
 
   it('aplica a comissão padrão informada no formulário', async () => {
@@ -242,10 +251,11 @@ describe('POST /api/imports/preview', () => {
       .attach('file', Buffer.from(STATEMENT_CSV, 'utf8'), { filename: 'extrato.csv', contentType: 'text/csv' });
 
     expect(response.status).toBe(200);
-    expect(response.body.data.rowCount).toBe(3);
+    // rowCount conta tudo o que será gravado, a retirada incluída.
+    expect(response.body.data.rowCount).toBe(4);
     expect(response.body.data.alreadyImported).toBe(false);
     expect(response.body.data.missingCategories)
-      .toEqual(['Recebimentos Pix', 'Vendas na maquininha']);
+      .toEqual(['Recebimentos Pix', 'Vendas na maquininha', 'Retiradas para a conta do salão']);
     expect(response.body.data.warnings).toEqual([]);
     expect(response.body.data.rows).toBeUndefined();
 
@@ -281,7 +291,7 @@ describe('GET /api/imports', () => {
       source: 'infinitepay',
       fileName: 'extrato-infinitepay.csv',
       status: 'processed',
-      importedCount: 3,
+      importedCount: 4,
     });
     // O payload bruto é grande e não interessa à tela.
     expect(response.body.data[0].rawPayload).toBeUndefined();
@@ -296,7 +306,7 @@ describe('DELETE /api/imports/:id', () => {
 
     const rollback = await request(app).delete(`/api/imports/${batchId}`).set('Authorization', `Bearer ${token}`);
     expect(rollback.status).toBe(200);
-    expect(rollback.body.data.removedCount).toBe(3);
+    expect(rollback.body.data.removedCount).toBe(4);
 
     expect(await Transaction.countDocuments({ deletedAt: null })).toBe(0);
     const batch = await ImportBatch.findById(batchId).lean();
@@ -305,7 +315,7 @@ describe('DELETE /api/imports/:id', () => {
     // Com o lote desfeito, o mesmo arquivo pode ser reenviado.
     const again = await upload(token);
     expect(again.status).toBe(201);
-    expect(again.body.data.importedCount).toBe(3);
+    expect(again.body.data.importedCount).toBe(4);
   });
 
   it('não desfaz duas vezes', async () => {

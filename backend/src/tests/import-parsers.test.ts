@@ -290,7 +290,8 @@ describe('parseInfinitePayStatement', () => {
     const { rows, skipped } = parseInfinitePayStatement(statementTables(), options);
 
     expect(skipped).toHaveLength(0);
-    expect(rows).toHaveLength(4); // a transferência para a titular não vira lançamento
+    // 5 linhas: 4 de resultado e a retirada da titular, que é gravada fora do DRE.
+    expect(rows).toHaveLength(5);
 
     const pix = rows.find((row) => row.description.includes('MARIA SOUZA'));
     expect(pix?.type).toBe('receita');
@@ -308,10 +309,12 @@ describe('parseInfinitePayStatement', () => {
     // O repasse já vem líquido de tarifa, então não há taxa a aplicar sobre ele.
     expect(deposit?.paymentFeeRate).toBe(0);
 
-    const expense = rows.find((row) => row.type === 'despesa');
+    const expense = rows.find((row) => row.category === 'Pagamentos Pix');
+    expect(expense?.type).toBe('despesa');
     expect(expense?.grossAmount).toBe(80);
-    expect(expense?.category).toBe('Pagamentos Pix');
     expect(expense?.description).toContain('FORNECEDOR ESMALTES LTDA');
+    // Pix para terceiro é despesa de verdade e conta no DRE.
+    expect(expense?.countsInDre).not.toBe(false);
   });
 
   it('herda a data do dia nas linhas que só têm hora', () => {
@@ -322,14 +325,20 @@ describe('parseInfinitePayStatement', () => {
     expect(nextDay?.occurredAt.toISOString()).toBe('2026-10-02T08:00:00.000Z');
   });
 
-  it('separa a transferência para a titular em vez de lançá-la como despesa', () => {
+  it('grava a retirada da titular fora do DRE, e não como despesa', () => {
     const { rows, asides } = parseInfinitePayStatement(statementTables(), options);
 
-    expect(rows.some((row) => row.description.includes('Nicolle'))).toBe(false);
+    // A linha existe: é dela que sai o "Saldo Retirado" da auditoria.
+    const withdrawal = rows.find((row) => row.category === 'Retiradas para a conta do salão');
+    expect(withdrawal?.grossAmount).toBe(150);
+    expect(withdrawal?.occurredAt.toISOString()).toBe('2026-10-02T18:00:00.000Z');
+    // Mas fica fora do resultado: é troca de bolso, não despesa do salão.
+    expect(withdrawal?.countsInDre).toBe(false);
+
     expect(asides).toHaveLength(1);
     expect(asides[0]?.count).toBe(1);
     expect(asides[0]?.amount).toBe(-150);
-    expect(asides[0]?.label).toContain('titular');
+    expect(asides[0]?.label).toContain('Retiradas');
   });
 
   it('não aplica comissão: o extrato não diz quem atendeu', () => {
@@ -416,12 +425,16 @@ describe('parseInfinitePayStatement com o extrato real', () => {
     const { rows, skipped, asides } = parseInfinitePayStatement(tables, options);
 
     expect(skipped).toHaveLength(0);
-    // 98 movimentos no extrato: 90 viram lançamento e 8 são transferências da titular.
-    expect(rows).toHaveLength(90);
+    // 98 movimentos: 90 de resultado e 8 retiradas da titular, todas gravadas.
+    expect(rows).toHaveLength(98);
     expect(asides[0]?.count).toBe(8);
     expect(asides[0]?.amount).toBeCloseTo(-6122.28, 2);
 
-    const income = rows.filter((row) => row.type === 'receita');
+    const withdrawals = rows.filter((row) => row.countsInDre === false);
+    expect(withdrawals).toHaveLength(8);
+    expect(withdrawals.reduce((total, row) => total + row.grossAmount, 0)).toBeCloseTo(6122.28, 2);
+
+    const income = rows.filter((row) => row.type === 'receita' && row.countsInDre !== false);
     expect(income).toHaveLength(90);
     // Confere com o "Total de entradas" impresso no relatório.
     expect(income.reduce((total, row) => total + row.grossAmount, 0)).toBeCloseTo(6938.28, 2);

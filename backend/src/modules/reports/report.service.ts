@@ -13,8 +13,12 @@
 // Toda receita conta no faturamento, qualquer que seja a origem (manual, Booksy ou
 // InfinitePay). Atenção ao que isso implica: o Booksy registra a venda e o extrato
 // registra o recebimento do mesmo atendimento, então importar as duas origens para um
-// mês que se sobrepõe conta essa receita duas vezes. Quem mostra essa diferença é a
-// conciliação (reconciliation.service.ts), não este resumo.
+// mês que se sobrepõe conta essa receita duas vezes. Quem confronta as duas é a
+// auditoria (modules/audits/audit.service.ts), não este resumo.
+//
+// Linhas com `countsInDre: false` ficam fora dos dois regimes: são as retiradas da
+// titular e os ajustes de auditoria cujo valor já está no faturamento do Booksy. Elas
+// aparecem nos três saldos (getBalances), que é onde fazem sentido.
 import { Transaction } from '../../models/transaction.model.js';
 import { AppError } from '../../shared/utils/app-error.js';
 
@@ -57,6 +61,7 @@ export class ReportService {
       // Competência: o fato aconteceu no período, independente do pagamento.
       Transaction.find({
         deletedAt: null,
+        countsInDre: { $ne: false },
         status: { $ne: 'cancelada' },
         occurredAt: { $gte: range.start, $lte: range.end },
       })
@@ -65,6 +70,7 @@ export class ReportService {
       // Caixa: o dinheiro entrou ou saiu no período.
       Transaction.find({
         deletedAt: null,
+        countsInDre: { $ne: false },
         status: 'liquidada',
         settledAt: { $gte: range.start, $lte: range.end },
       })
@@ -117,6 +123,7 @@ export class ReportService {
   async getCashFlow(range: DateRange): Promise<{ date: string; amount: number }[]> {
     const entries = await Transaction.find({
       deletedAt: null,
+      countsInDre: { $ne: false },
       settledAt: { $gte: range.start, $lte: range.end },
       status: 'liquidada',
     }).sort({ settledAt: 1 }).lean();

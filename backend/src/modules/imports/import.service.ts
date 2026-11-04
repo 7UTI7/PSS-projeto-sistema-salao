@@ -268,6 +268,10 @@ export class ImportService {
       if (!periodStart || row.occurredAt < periodStart) periodStart = row.occurredAt;
       if (!periodEnd || row.occurredAt > periodEnd) periodEnd = row.occurredAt;
 
+      // As retiradas da titular são gravadas, mas não entram nos totais do lote: somá-las
+      // faria o resumo da tela dizer que movimentou o dobro. Elas aparecem à parte.
+      if (row.countsInDre === false) continue;
+
       const calculation = this.calculate(row);
       totals.grossAmount += row.grossAmount;
       totals.discountAmount += row.discountAmount;
@@ -380,6 +384,7 @@ export class ImportService {
           ...(row.settledAt ? { settledAt: row.settledAt } : {}),
           status: row.status,
           origin: source,
+          countsInDre: row.countsInDre ?? true,
           importBatchId: batchId,
           externalId: row.externalId,
           createdBy: actor.id,

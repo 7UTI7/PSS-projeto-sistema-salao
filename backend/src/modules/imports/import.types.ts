@@ -28,6 +28,11 @@ export interface ParsedRow {
   occurredAt: Date;
   settledAt?: Date;
   status: 'pendente' | 'liquidada' | 'cancelada';
+  /**
+   * `false` grava a linha fora do DRE. Hoje só as retiradas da titular usam isso: são
+   * dinheiro saindo da conta da InfinitePay para a conta do salão, não despesa.
+   */
+  countsInDre?: boolean;
 }
 
 /** Linha que o parser não conseguiu aproveitar, com o motivo legível para a tela. */
@@ -37,10 +42,12 @@ export interface SkippedRow {
 }
 
 /**
- * Movimento que o parser reconheceu mas deixou de propósito fora dos lançamentos, somado
- * para a tela poder mostrá-lo. O caso típico é a transferência da conta da InfinitePay para
- * a conta pessoal da titular: é dinheiro saindo da conta, mas não é despesa do salão — lançar
- * como despesa zeraria o lucro do mês, já que a dona retira quase tudo o que entra.
+ * Movimento que o parser reconheceu mas deixou de propósito fora do RESULTADO, somado para
+ * a tela poder mostrá-lo. O caso típico é a transferência da conta da InfinitePay para a
+ * conta pessoal da titular: é dinheiro saindo da conta, mas não é despesa do salão — lançar
+ * como despesa zeraria o lucro do mês, já que a dona retira quase tudo o que entra. A linha
+ * é gravada (com `countsInDre: false`) para alimentar o "Saldo Retirado"; o que ela não faz
+ * é entrar no DRE nem nos totais do lote.
  */
 export interface AsideTotal {
   label: string;
