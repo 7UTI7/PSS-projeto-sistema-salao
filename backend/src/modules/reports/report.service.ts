@@ -1,4 +1,17 @@
 // Gera os relatórios DRE e Fluxo de Caixa a partir dos lançamentos.
+//
+// Os dois olham o mesmo dinheiro por regimes diferentes, e é isso que decide o que cada
+// um soma:
+//   DRE          -> competência: a receita é a venda, na data do atendimento.
+//   Fluxo de Caixa -> caixa: o que foi liquidado, na data da liquidação.
+//
+// Por isso a receita do DRE ignora a origem 'infinitepay'. O extrato e o relatório do
+// Booksy descrevem o mesmo atendimento em momentos diferentes (a venda e o repasse que
+// caiu na conta); somar os dois dobraria o faturamento do mês. O Booksy é a fonte da
+// receita porque é o único que diz o que foi vendido e quem atendeu — o extrato não
+// nomeia a profissional, então também não serviria para a comissão.
+// As DESPESAS do extrato continuam valendo: são dinheiro que saiu da conta de verdade.
+// O Fluxo de Caixa usa as duas origens sem ressalva: ali o extrato é a fonte legítima.
 import { Transaction } from '../../models/transaction.model.js';
 import { AppError } from '../../shared/utils/app-error.js';
 
@@ -27,6 +40,9 @@ export class ReportService {
 
     for (const entry of entries) {
       if (entry.type === 'receita') {
+        // Receita do extrato é a contrapartida do que o Booksy já lançou como venda.
+        // Quem confere uma contra a outra é a conciliação, não o DRE.
+        if (entry.origin === 'infinitepay') continue;
         totals.receitaBruta += entry.grossAmount;
         totals.descontos += entry.discountAmount;
         totals.taxas += entry.feeAmount;
