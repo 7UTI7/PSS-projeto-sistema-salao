@@ -136,15 +136,19 @@ export function parseBooksyReport(tables: SheetTable[], options: ParseOptions): 
 
     const status = resolveStatus(cellText(row, table.columns.get('status')));
 
+    // Cancelamento e falta não entram: não houve atendimento e não houve dinheiro. Antes
+    // eram gravados com status 'cancelada' e, embora o resumo do mês já os ignorasse, o
+    // total do lote no histórico os somava — o arquivo de agosto aparecia como
+    // R$ 2.830,00 quando o vendido foi R$ 2.230,00.
+    if (status === 'cancelada') {
+      skipped.push({ line, reason: `"${description}" foi cancelado ou não compareceu.` });
+      return;
+    }
+
     // Na exportação atual "Receita total" é sempre serviços + complementos − desconto.
     // Se o Booksy mudar essa conta, é melhor a linha aparecer como ignorada do que
     // entrar no caixa com um valor que não bate com o relatório da plataforma.
-    //
-    // Cancelamento fica fora da conferência de propósito: o Booksy zera a receita total
-    // mas mantém o valor do serviço na linha, então a diferença ali é esperada. Esses
-    // agendamentos entram como 'cancelada' — o DRE e o Fluxo de Caixa já os ignoram, e
-    // guardá-los deixa o volume de cancelamentos visível na lista de lançamentos.
-    if (status !== 'cancelada' && totalRevenue !== null && Math.abs(totalRevenue - baseAmount) > 0.01) {
+    if (totalRevenue !== null && Math.abs(totalRevenue - baseAmount) > 0.01) {
       skipped.push({
         line,
         reason: `"${description}": receita total (${totalRevenue.toFixed(2)}) não confere com`

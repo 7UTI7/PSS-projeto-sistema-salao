@@ -105,7 +105,7 @@ describe('POST /api/imports', () => {
       .post('/api/imports')
       .set('Authorization', `Bearer ${token}`)
       .field('source', 'booksy')
-      .attach('file', Buffer.from('nada'), { filename: 'relatorio.pdf', contentType: 'application/pdf' });
+      .attach('file', Buffer.from('nada'), { filename: 'relatorio.docx', contentType: 'application/octet-stream' });
     expect(response.status).toBe(400);
     expect(response.body.message).toMatch(/\.xlsx|\.csv/);
   });
@@ -296,7 +296,7 @@ describe('DELETE /api/imports/:id', () => {
 
     const rollback = await request(app).delete(`/api/imports/${batchId}`).set('Authorization', `Bearer ${token}`);
     expect(rollback.status).toBe(200);
-    expect(rollback.body.data.removedCount).toBe(2);
+    expect(rollback.body.data.removedCount).toBe(3);
 
     expect(await Transaction.countDocuments({ deletedAt: null })).toBe(0);
     const batch = await ImportBatch.findById(batchId).lean();
@@ -305,7 +305,7 @@ describe('DELETE /api/imports/:id', () => {
     // Com o lote desfeito, o mesmo arquivo pode ser reenviado.
     const again = await upload(token);
     expect(again.status).toBe(201);
-    expect(again.body.data.importedCount).toBe(2);
+    expect(again.body.data.importedCount).toBe(3);
   });
 
   it('não desfaz duas vezes', async () => {

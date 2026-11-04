@@ -8,7 +8,7 @@
 //
 // O fluxo é: escolher arquivo -> conferir a prévia -> confirmar. A prévia existe porque
 // importar errado mexe no resultado do mês, e desfazer depois dá mais trabalho.
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -35,7 +35,7 @@ import { getApiErrorMessage } from '../../services/api';
 import { ACCEPTED_EXTENSIONS_LABEL } from '../../services/import.service';
 import { DEFAULT_COMMISSION_RATE } from '../../config/studio.config';
 import { formatCurrency, formatDate, formatPercent, parseAmountInput } from '../../utils/formatters';
-import { periodLabel } from '../../utils/period';
+import { periodKeyOf, periodLabel } from '../../utils/period';
 import { usePeriodStore } from '../../store/periodStore';
 import { importBatchStatusLabels, importSourceLabels } from '../../utils/labels';
 import type { ImportBatch, ImportPreview, ImportSource, PickedFile } from '../../types';
@@ -77,6 +77,7 @@ export default function ImportsScreen() {
   const isAdmin = useIsAdmin();
   const { file, pickFile, clearFile } = useFilePicker();
   const period = usePeriodStore((state) => state.period);
+  const setPeriod = usePeriodStore((state) => state.setPeriod);
   const reconciliationQuery = useReconciliation();
   const reconciliation = reconciliationQuery.data;
   const [source, setSource] = useState<ImportSource | null>(null);
@@ -87,6 +88,29 @@ export default function ImportsScreen() {
   const previewMutation = usePreviewImport();
   const processMutation = useProcessImport();
   const rollbackMutation = useRollbackImport();
+
+  /**
+   * Período que cada origem já cobre, somando os lotes processados. É o que responde
+   * "onde estão meus dados": os arquivos quase nunca são do mês corrente, e sem isso a
+   * tela do mês errado parecia vazia por defeito de leitura.
+   */
+  const coverage = useMemo(() => {
+    const ranges = new Map<ImportSource, { start: string; end: string }>();
+    for (const batch of batchesQuery.data ?? []) {
+      if (batch.status !== 'processed' || !batch.periodStart || !batch.periodEnd) continue;
+      const current = ranges.get(batch.source);
+      ranges.set(batch.source, {
+        start: !current || batch.periodStart < current.start ? batch.periodStart : current.start,
+        end: !current || batch.periodEnd > current.end ? batch.periodEnd : current.end,
+      });
+    }
+    return [...ranges.entries()];
+  }, [batchesQuery.data]);
+
+  /** O mês selecionado tem dado de alguma origem? (comparação por chave AAAA-MM) */
+  const periodCovered = coverage.some(
+    ([, range]) => periodKeyOf(range.start) <= period && period <= periodKeyOf(range.end),
+  );
 
   const commissionRate = parseAmountInput(commissionPercent) / 100;
 
@@ -139,10 +163,16 @@ export default function ImportsScreen() {
       {
         onSuccess: (result) => {
           resetSelection();
+          // O arquivo quase nunca é do mês corrente, e o app abre no mês corrente: sem
+          // mover o seletor, a importação "não aparece" e parece que nada foi lido.
+          if (result.periodEnd) setPeriod(periodKeyOf(result.periodEnd));
           Alert.alert(
             'Importação concluída',
             [
               `${result.importedCount} lançamento(s) criado(s).`,
+              result.periodStart && result.periodEnd
+                ? `Período do arquivo: ${formatDate(result.periodStart)} a ${formatDate(result.periodEnd)}.`
+                : null,
               result.duplicateCount > 0
                 ? `${result.duplicateCount} já existiam e foram ignorados.`
                 : null,
@@ -336,7 +366,7 @@ export default function ImportsScreen() {
               </View>
               <View style={styles.previewBox}>
                 <Text style={styles.previewLabel}>
-                  {preview.source === 'booksy' ? 'Receita bruta' : 'Total de taxas'}
+                  {preview.source === 'booksy' ? 'Receita bruta' : 'Total movimentado'}
                 </Text>
                 <Text style={styles.previewValue}>{formatCurrency(preview.totals.grossAmount)}</Text>
               </View>
@@ -426,6 +456,32 @@ export default function ImportsScreen() {
                 <Text style={styles.secondaryActionText}>Descartar</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        ) : null}
+
+        {/* COBERTURA: de que período é cada arquivo já importado. */}
+        {coverage.length > 0 ? (
+          <View style={styles.card}>
+            <View style={styles.summaryTitleRow}>
+              <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+              <Text style={styles.summaryTitle}>Períodos importados</Text>
+            </View>
+
+            {coverage.map(([src, range]) => (
+              <Text key={src} style={styles.previewPeriod}>
+                {importSourceLabels[src]}: {formatDate(range.start)} a {formatDate(range.end)}
+              </Text>
+            ))}
+
+            {!periodCovered ? (
+              <View style={styles.warnBanner}>
+                <Ionicons name="alert-circle" size={16} color={colors.statusWarning} />
+                <Text style={styles.warnText}>
+                  O mês selecionado ({periodLabel(period)}) não está coberto por nenhum
+                  arquivo importado. Troque o mês no cabeçalho para ver os números.
+                </Text>
+              </View>
+            ) : null}
           </View>
         ) : null}
 

@@ -15,6 +15,21 @@ const uploadSchema = z.object({
 
 const idSchema = z.string().regex(/^[a-f\d]{24}$/i);
 
+/**
+ * O nome chega do seletor de arquivos do celular, que entrega o acento percent-encoded
+ * ("relato%CC%81rio.pdf") e em NFD (o + acento combinante). Sem normalizar, o histórico
+ * mostra o nome cru e dois nomes visualmente iguais comparam como diferentes.
+ */
+function normalizeFileName(name: string): string {
+  let decoded = name;
+  try {
+    decoded = decodeURIComponent(name);
+  } catch {
+    // Nome com '%' literal não é URI válida; nesse caso vale o original.
+  }
+  return decoded.normalize('NFC');
+}
+
 export class ImportController {
   constructor(private readonly importService = new ImportService()) {}
 
@@ -60,7 +75,7 @@ export class ImportController {
     return {
       source: body.data.source,
       defaultCommissionRate: body.data.defaultCommissionRate,
-      originalName: file.originalname,
+      originalName: normalizeFileName(file.originalname),
       buffer: file.buffer,
     };
   }

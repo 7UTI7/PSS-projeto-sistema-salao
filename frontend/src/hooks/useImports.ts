@@ -66,6 +66,17 @@ export function useRollbackImport() {
  * A origem é obrigatória porque cada uma aceita formatos diferentes: filtrar o seletor
  * pela origem evita escolher um arquivo que a API vai recusar.
  */
+/** Desfaz o percent-encoding do seletor e junta os acentos combinantes (NFD -> NFC). */
+function normalizeFileName(name: string): string {
+  let decoded = name;
+  try {
+    decoded = decodeURIComponent(name);
+  } catch {
+    // Nome com '%' literal não é URI válida; nesse caso vale o original.
+  }
+  return decoded.normalize('NFC');
+}
+
 export function useFilePicker() {
   const [file, setFile] = useState<PickedFile | null>(null);
 
@@ -82,7 +93,9 @@ export function useFilePicker() {
 
     const picked: PickedFile = {
       uri: asset.uri,
-      name: asset.name,
+      // O seletor entrega o acento percent-encoded ("relato%CC%81rio.pdf") e em NFD; sem
+      // normalizar, é esse nome cru que aparece na tela e vai para o histórico.
+      name: normalizeFileName(asset.name),
       // Alguns provedores (Drive, WhatsApp) não informam o MIME; o backend valida
       // pela extensão e pelo conteúdo, então o genérico passa.
       mimeType: asset.mimeType ?? 'application/octet-stream',

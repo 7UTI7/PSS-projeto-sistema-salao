@@ -384,10 +384,14 @@ export class ImportService {
         };
       });
 
-    if (documents.length > 0) await Transaction.insertMany(documents, { ordered: false });
+    // `insertedCount` vem do retorno do insert, não do tamanho do lote preparado: o
+    // número que a tela mostra como "importado(s)" é o de linhas realmente gravadas.
+    const inserted = documents.length > 0
+      ? await Transaction.insertMany(documents, { ordered: false })
+      : [];
 
     return {
-      importedCount: documents.length,
+      importedCount: inserted.length,
       duplicateCount: rows.length - documents.length,
     };
   }

@@ -19,6 +19,16 @@ export function formatCurrency(value: number | null | undefined): string {
 }
 
 /**
+ * Todas as datas são exibidas em UTC, nunca no fuso do aparelho.
+ *
+ * O importador grava a hora de parede que está no arquivo (um movimento às 02:03 do dia
+ * 01/10 vira 2026-10-01T02:03Z) e o filtro de mês também consulta em UTC. Formatar no
+ * fuso do celular jogava 8 das 90 movimentações do extrato para o dia anterior — uma
+ * delas trocava de mês, aparecendo como 30/09 enquanto contava em outubro.
+ */
+const UTC = 'UTC' as const;
+
+/**
  * Formata uma data ISO para DD/MM/YYYY
  */
 export function formatDate(dateString: string | Date | null | undefined): string {
@@ -30,6 +40,7 @@ export function formatDate(dateString: string | Date | null | undefined): string
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
+    timeZone: UTC,
   }).format(date);
 }
 
@@ -47,6 +58,7 @@ export function formatDateTime(dateString: string | Date | null | undefined): st
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: UTC,
   }).format(date);
 }
 
@@ -79,7 +91,7 @@ export function formatTime(dateString: string | Date | null | undefined): string
   const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
   if (isNaN(date.getTime())) return '--:--';
 
-  return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(date);
+  return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: UTC }).format(date);
 }
 
 /** "Hoje, 15:40" / "Ontem, 14:15" / "28 ago, 18:00" — rótulo curto da lista. */
@@ -88,14 +100,17 @@ export function formatRelativeDateTime(dateString: string | Date | null | undefi
   const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
   if (isNaN(date.getTime())) return '-';
 
-  const startOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-  const daysApart = Math.round((startOfDay(new Date()) - startOfDay(date)) / 86400000);
+  // Compara os dias em UTC, igual ao resto da formatação: usar o dia local faria um
+  // movimento das 02:00 UTC ser "ontem" para quem está em BRT.
+  const startOfDayUtc = (value: Date) =>
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
+  const daysApart = Math.round((startOfDayUtc(new Date()) - startOfDayUtc(date)) / 86400000);
   const time = formatTime(date);
 
   if (daysApart === 0) return `Hoje, ${time}`;
   if (daysApart === 1) return `Ontem, ${time}`;
 
-  const shortDate = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(date);
+  const shortDate = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', timeZone: UTC }).format(date);
   return `${shortDate.replace('.', '')}, ${time}`;
 }
 

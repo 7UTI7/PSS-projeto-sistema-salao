@@ -51,6 +51,18 @@ export function periodRange(key: PeriodKey): PeriodRange {
   };
 }
 
+/**
+ * Mês a que uma data pertence, lido em UTC.
+ *
+ * Tem de ser UTC: o importador grava a hora de parede do arquivo, então um movimento de
+ * 01/10 às 02:03 é 2026-10-01T02:03Z. Lido no fuso do celular viraria setembro, e o mês
+ * sugerido depois da importação sairia errado.
+ */
+export function periodKeyOf(date: string | Date): PeriodKey {
+  const value = typeof date === 'string' ? new Date(date) : date;
+  return toPeriodKey(value.getUTCFullYear(), value.getUTCMonth());
+}
+
 /** "Agosto 2026" — o rótulo do seletor de período no cabeçalho. */
 export function periodLabel(key: PeriodKey): string {
   const { year, monthIndex } = parsePeriodKey(key);

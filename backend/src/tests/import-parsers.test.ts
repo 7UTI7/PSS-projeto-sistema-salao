@@ -200,7 +200,7 @@ describe('parseBooksyReport', () => {
     expect(skipped[0]?.reason).toContain('não confere');
   });
 
-  it('não aplica a conferência de receita a cancelamento (Booksy zera a receita total)', () => {
+  it('não importa cancelamento: não houve atendimento nem dinheiro', () => {
     const tables = [{
       name: 'Lista de agendamentos',
       rows: [
@@ -210,24 +210,25 @@ describe('parseBooksyReport', () => {
     }];
 
     const { rows, skipped } = parseBooksyReport(tables, options);
-    expect(skipped).toHaveLength(0);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]?.status).toBe('cancelada');
-    expect(rows[0]?.grossAmount).toBe(180);
+    expect(rows).toHaveLength(0);
+    expect(skipped).toHaveLength(1);
+    expect(skipped[0]?.reason).toContain('cancelado');
   });
 
-  it('marca cancelamento como cancelada e sem settledAt', () => {
+  it('também deixa de fora a falta do cliente (no show)', () => {
     const tables = [{
       name: 'Lista de agendamentos',
       rows: [
         ['Data e hora', 'ID da Reserva', 'Serviço', 'Funcionário', 'Valor dos serviços', 'Status'],
-        ['21/08/2026 17:00', '10', 'Efeito Wispy', 'Nicolle Neris', '180', 'Cancelada'],
+        ['21/08/2026 17:00', '10', 'Efeito Wispy', 'Nicolle Neris', '180', 'No show'],
+        ['21/08/2026 19:00', '11', 'Mão Simples', 'Stephany Mendes', '30', 'Concluída'],
       ],
     }];
 
     const { rows } = parseBooksyReport(tables, options);
-    expect(rows[0]?.status).toBe('cancelada');
-    expect(rows[0]?.settledAt).toBeUndefined();
+    // Só o atendimento concluído entra, e o total do lote passa a ser o vendido de fato.
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.grossAmount).toBe(30);
   });
 
   it('recusa o arquivo quando as colunas não são reconhecidas', () => {
