@@ -22,6 +22,7 @@ import {
   useFilteredTransactions,
   useSettleTransaction,
 } from '../../hooks/useTransactions';
+import { useFinancialSummary } from '../../hooks/useReports';
 import { usePeriodStore } from '../../store/periodStore';
 import { useAuthStore } from '../../store/authStore';
 import { getApiErrorMessage } from '../../services/api';
@@ -63,21 +64,12 @@ export default function TransactionsScreen() {
   const settleMutation = useSettleTransaction();
   const deleteMutation = useDeleteTransaction();
 
-  // Totais do que está na tela: muda junto com o filtro, como a dona espera.
-  const totals = useMemo(() => {
-    return transactions.reduce(
-      (accumulator, transaction) => {
-        if (transaction.status === 'cancelada') return accumulator;
-        if (transaction.type === 'receita') {
-          accumulator.revenue += transaction.grossAmount - transaction.discountAmount;
-        } else {
-          accumulator.expense += transaction.grossAmount;
-        }
-        return accumulator;
-      },
-      { revenue: 0, expense: 0 }
-    );
-  }, [transactions]);
+  // O resumo vem do servidor, da mesma função que alimenta o Painel. Antes era somado
+  // aqui no cliente, com outra regra, e por isso as duas telas mostravam valores
+  // diferentes para o mesmo mês. É o total do MÊS, não do filtro da lista: o filtro
+  // muda o que aparece na lista, não a conta do período.
+  const summaryQuery = useFinancialSummary();
+  const summary = summaryQuery.data;
 
   function handleSettle(transaction: Transaction) {
     Alert.alert(
@@ -252,27 +244,30 @@ export default function TransactionsScreen() {
           })}
         </View>
 
-        {/* Resumo do que está filtrado, antes da lista. */}
-        <View style={styles.summaryRow}>
-          <View style={styles.summaryBox}>
-            <Text style={styles.summaryLabel}>Receitas</Text>
-            <Text style={[styles.summaryValue, { color: colors.violetRoyal }]}>
-              {formatCurrency(totals.revenue)}
-            </Text>
+        {/* Resumo do MÊS, igual ao do Painel: vem do servidor, não é somado aqui.
+            Só a administradora tem acesso ao resumo financeiro do estúdio. */}
+        {isAdmin && summary ? (
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryBox}>
+              <Text style={styles.summaryLabel}>Faturamento</Text>
+              <Text style={[styles.summaryValue, { color: colors.violetRoyal }]}>
+                {formatCurrency(summary.faturamentoBruto)}
+              </Text>
+            </View>
+            <View style={styles.summaryBox}>
+              <Text style={styles.summaryLabel}>Despesas</Text>
+              <Text style={[styles.summaryValue, { color: colors.statusError }]}>
+                {formatCurrency(summary.despesas)}
+              </Text>
+            </View>
+            <View style={styles.summaryBox}>
+              <Text style={styles.summaryLabel}>Lucro</Text>
+              <Text style={styles.summaryValue}>
+                {formatCurrency(summary.lucroEstudio)}
+              </Text>
+            </View>
           </View>
-          <View style={styles.summaryBox}>
-            <Text style={styles.summaryLabel}>Despesas</Text>
-            <Text style={[styles.summaryValue, { color: colors.statusError }]}>
-              {formatCurrency(totals.expense)}
-            </Text>
-          </View>
-          <View style={styles.summaryBox}>
-            <Text style={styles.summaryLabel}>Saldo</Text>
-            <Text style={styles.summaryValue}>
-              {formatCurrency(totals.revenue - totals.expense)}
-            </Text>
-          </View>
-        </View>
+        ) : null}
 
         {isPending ? (
           <LoadingState label="Carregando lançamentos..." />

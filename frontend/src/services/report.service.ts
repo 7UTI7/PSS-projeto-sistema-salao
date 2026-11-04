@@ -4,13 +4,13 @@
 // completo — por isso o período vem sempre de utils/period.ts, nunca de uma string
 // "YYYY-MM-DD" montada à mão.
 import { api } from './api';
-import { ApiResponse, CashFlowPoint, DreReport, ReconciliationSummary } from '../types';
+import { ApiResponse, CashFlowPoint, FinancialSummary, ReconciliationSummary } from '../types';
 import { periodRange, PeriodKey } from '../utils/period';
 
 export const reportService = {
-  /** DRE gerencial (regime de competência): usa a data do atendimento. */
-  async getDre(period: PeriodKey): Promise<DreReport> {
-    const response = await api.get<ApiResponse<DreReport>>('/reports/dre', {
+  /** Resumo financeiro do mês: a mesma conta usada pelo Painel e por Lançamentos. */
+  async getFinancialSummary(period: PeriodKey): Promise<FinancialSummary> {
+    const response = await api.get<ApiResponse<FinancialSummary>>('/reports/dre', {
       params: periodRange(period),
     });
     return response.data.data;
@@ -60,13 +60,8 @@ export function summarizeCashFlow(points: readonly CashFlowPoint[]): CashFlowSum
   );
 }
 
-/** Total de despesas do DRE: custos variáveis (comissões e insumos) mais despesas fixas. */
-export function totalExpenses(dre: DreReport): number {
-  return dre.custosVariaveis + dre.despesasFixas;
-}
-
-/** Margem do resultado sobre a receita bruta, como fração (0.325 = 32,5%). */
-export function profitMargin(dre: DreReport): number {
-  if (!dre.receitaBruta) return 0;
-  return dre.resultado / dre.receitaBruta;
+/** Margem do lucro do estúdio sobre o faturamento bruto, como fração (0.325 = 32,5%). */
+export function profitMargin(summary: FinancialSummary): number {
+  if (!summary.faturamentoBruto) return 0;
+  return summary.lucroEstudio / summary.faturamentoBruto;
 }

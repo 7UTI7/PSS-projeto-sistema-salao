@@ -15,11 +15,11 @@ import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { FloatingActionButton } from '../../components/ui/FloatingActionButton';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/QueryState';
-import { useCashFlowReport, useDreReport, useIsAdmin } from '../../hooks/useReports';
+import { useCashFlowReport, useFinancialSummary, useIsAdmin } from '../../hooks/useReports';
 import { useFilteredTransactions } from '../../hooks/useTransactions';
 import { useAuthStore } from '../../store/authStore';
 import { usePeriodStore } from '../../store/periodStore';
-import { profitMargin, summarizeCashFlow, totalExpenses } from '../../services/report.service';
+import { profitMargin, summarizeCashFlow } from '../../services/report.service';
 import { MONTHLY_REVENUE_GOAL } from '../../config/studio.config';
 import { LOW_STOCK_ITEMS } from '../../data/inventory.mock';
 import {
@@ -42,7 +42,7 @@ export default function DashboardScreen() {
   const userName = useAuthStore((state) => state.user?.name);
   const isAdmin = useIsAdmin();
 
-  const dreQuery = useDreReport();
+  const dreQuery = useFinancialSummary();
   const cashFlowQuery = useCashFlowReport();
   const { transactions, isPending: loadingTransactions, isError, error, refetch } =
     useFilteredTransactions();
@@ -76,8 +76,7 @@ export default function DashboardScreen() {
   );
 
   const dre = dreQuery.data;
-  const expenses = dre ? totalExpenses(dre) : 0;
-  const goalProgress = dre ? Math.min(shareOf(dre.receitaBruta, MONTHLY_REVENUE_GOAL), 1) : 0;
+  const goalProgress = dre ? Math.min(shareOf(dre.faturamentoBruto, MONTHLY_REVENUE_GOAL), 1) : 0;
   const refreshing = dreQuery.isRefetching || cashFlowQuery.isRefetching;
 
   function handleRefresh() {
@@ -199,7 +198,7 @@ export default function DashboardScreen() {
             <View style={styles.grid2x2}>
               <KpiCard
                 label="Faturamento bruto"
-                value={formatCurrency(dre.receitaBruta)}
+                value={formatCurrency(dre.faturamentoBruto)}
                 hint={`Descontos: ${formatCurrency(dre.descontos)}`}
                 icon="wallet-outline"
                 iconColor={colors.violetRoyal}
@@ -213,23 +212,33 @@ export default function DashboardScreen() {
                 iconColor={colors.tertiary}
                 iconBackground={colors.lavenderTint}
               />
+              {/* Comissão é repasse, não despesa: fica em card próprio para não inflar
+                  "Despesas" num mês em que nada foi gasto. */}
+              <KpiCard
+                label="Comissões"
+                value={formatCurrency(dre.comissoes)}
+                hint="Repasse às profissionais"
+                icon="people-outline"
+                iconColor={colors.tertiary}
+                iconBackground={colors.lavenderTint}
+              />
               <KpiCard
                 label="Despesas"
-                value={formatCurrency(expenses)}
-                hint={`Fixas: ${formatCurrency(dre.despesasFixas)}`}
+                value={formatCurrency(dre.despesas)}
+                hint="Só o que foi lançado"
                 icon="bag-outline"
                 iconColor={colors.statusError}
                 iconBackground={colors.statusErrorBg}
                 valueColor={colors.statusError}
               />
               <KpiCard
-                label="Resultado"
-                value={formatCurrency(dre.resultado)}
+                label="Lucro do estúdio"
+                value={formatCurrency(dre.lucroEstudio)}
                 hint={`Margem: ${formatPercent(profitMargin(dre), 1)}`}
                 icon="cash-outline"
-                iconColor={dre.resultado >= 0 ? colors.statusSuccess : colors.statusError}
-                iconBackground={dre.resultado >= 0 ? colors.statusSuccessBg : colors.statusErrorBg}
-                valueColor={dre.resultado >= 0 ? colors.statusSuccess : colors.statusError}
+                iconColor={dre.lucroEstudio >= 0 ? colors.statusSuccess : colors.statusError}
+                iconBackground={dre.lucroEstudio >= 0 ? colors.statusSuccessBg : colors.statusErrorBg}
+                valueColor={dre.lucroEstudio >= 0 ? colors.statusSuccess : colors.statusError}
               />
             </View>
 
@@ -256,9 +265,9 @@ export default function DashboardScreen() {
               </View>
 
               <View style={styles.metaBottom}>
-                <Text style={styles.metaSubText}>{formatCurrency(dre.receitaBruta)} faturado</Text>
+                <Text style={styles.metaSubText}>{formatCurrency(dre.faturamentoBruto)} faturado</Text>
                 <Text style={styles.metaSubText}>
-                  Falta: {formatCurrency(Math.max(MONTHLY_REVENUE_GOAL - dre.receitaBruta, 0))}
+                  Falta: {formatCurrency(Math.max(MONTHLY_REVENUE_GOAL - dre.faturamentoBruto, 0))}
                 </Text>
               </View>
             </View>

@@ -13,9 +13,10 @@ export class ReportController {
     private readonly reconciliationService = new ReconciliationService(),
   ) {}
 
+  /** Resumo financeiro do mês: a mesma conta que o Painel e Lançamentos exibem. */
   async dre(request: Request, response: Response): Promise<void> {
     const range = this.parseRange(request);
-    const data = await this.reportService.getDre(range);
+    const data = await this.reportService.getFinancialSummary(range);
     response.json({ status: 'success', data });
   }
 

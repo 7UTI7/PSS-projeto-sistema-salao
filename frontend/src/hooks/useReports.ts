@@ -1,4 +1,4 @@
-// Hooks dos relatórios DRE, Fluxo de Caixa e Conciliação, no mês de referência do app.
+// Hooks do resumo financeiro, do Fluxo de Caixa e da Conciliação, no mês de referência.
 //
 // As duas rotas são restritas ao admin. Em vez de deixar a tela receber um 403, as
 // queries só rodam quando o usuário logado é admin (`enabled`), e a tela mostra o
@@ -13,13 +13,17 @@ export function useIsAdmin(): boolean {
   return useAuthStore((state) => state.user?.role === 'admin');
 }
 
-export function useDreReport() {
+/**
+ * Resumo financeiro do mês. É o hook que o Painel e a tela de Lançamentos usam, para que
+ * as duas telas mostrem exatamente os mesmos números.
+ */
+export function useFinancialSummary() {
   const period = usePeriodStore((state) => state.period);
   const isAdmin = useIsAdmin();
 
   return useQuery({
     queryKey: queryKeys.reports.dre(period),
-    queryFn: () => reportService.getDre(period),
+    queryFn: () => reportService.getFinancialSummary(period),
     enabled: isAdmin,
   });
 }

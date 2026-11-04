@@ -113,14 +113,21 @@ export interface CategoryInput {
  * DRE gerencial (GET /reports/dre). Chaves em português porque é o que o
  * ReportService devolve; renomear aqui quebraria a leitura da resposta.
  */
-export interface DreReport {
-  receitaBruta: number;
+/**
+ * Resumo financeiro do mês (GET /reports/dre). É a única fonte dos números: o Painel e a
+ * tela de Lançamentos leem este mesmo objeto, em vez de cada um somar do seu jeito.
+ *
+ * `comissoes` é repasse à profissional e vem em linha própria — não entra em `despesas`.
+ */
+export interface FinancialSummary {
+  faturamentoBruto: number;
   descontos: number;
   taxas: number;
   receitaLiquida: number;
-  custosVariaveis: number;
-  despesasFixas: number;
-  resultado: number;
+  comissoes: number;
+  despesas: number;
+  lucroEstudio: number;
+  saldo: number;
 }
 
 /** Um dia do Fluxo de Caixa (GET /reports/cash-flow): saldo líquido do dia. */

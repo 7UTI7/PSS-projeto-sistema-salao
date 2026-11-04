@@ -11,17 +11,17 @@ import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { FloatingActionButton } from '../../components/ui/FloatingActionButton';
 import { AdminOnlyState, ErrorState, LoadingState } from '../../components/ui/QueryState';
-import { useCashFlowReport, useDreReport, useIsAdmin } from '../../hooks/useReports';
+import { useCashFlowReport, useFinancialSummary, useIsAdmin } from '../../hooks/useReports';
 import { usePeriodStore } from '../../store/periodStore';
-import { profitMargin, summarizeCashFlow, totalExpenses } from '../../services/report.service';
+import { profitMargin, summarizeCashFlow } from '../../services/report.service';
 import { formatCurrency, formatPercent } from '../../utils/formatters';
 import { periodLabel } from '../../utils/period';
-import type { DreReport } from '../../types';
+import type { FinancialSummary } from '../../types';
 
 export default function ReportsScreen() {
   const isAdmin = useIsAdmin();
   const period = usePeriodStore((state) => state.period);
-  const dreQuery = useDreReport();
+  const dreQuery = useFinancialSummary();
   const cashFlowQuery = useCashFlowReport();
 
   const cashFlow = useMemo(
@@ -67,7 +67,7 @@ export default function ReportsScreen() {
     );
   }
 
-  const dre = dreQuery.data as DreReport;
+  const dre = dreQuery.data as FinancialSummary;
   const points = cashFlowQuery.data ?? [];
 
   return (
@@ -108,7 +108,7 @@ export default function ReportsScreen() {
           </View>
 
           <View style={styles.statement}>
-            <StatementRow label="Receita bruta" value={dre.receitaBruta} />
+            <StatementRow label="Faturamento bruto" value={dre.faturamentoBruto} />
             <StatementRow label="(−) Descontos concedidos" value={-dre.descontos} muted />
             <StatementRow label="(−) Taxas de pagamento" value={-dre.taxas} muted />
             <StatementRow label="(=) Receita líquida" value={dre.receitaLiquida} emphasis />
@@ -116,15 +116,15 @@ export default function ReportsScreen() {
             <View style={styles.statementDivider} />
 
             <StatementRow
-              label="(−) Custos variáveis"
-              value={-dre.custosVariaveis}
-              hint="Comissões das profissionais e insumos"
+              label="(−) Comissões"
+              value={-dre.comissoes}
+              hint="Repasse às profissionais, não é despesa do estúdio"
               muted
             />
             <StatementRow
-              label="(−) Despesas fixas"
-              value={-dre.despesasFixas}
-              hint="Aluguel, internet, assinaturas"
+              label="(−) Despesas"
+              value={-dre.despesas}
+              hint="Só o que foi lançado no período"
               muted
             />
 
@@ -132,25 +132,25 @@ export default function ReportsScreen() {
 
             <View style={styles.resultRow}>
               <View style={styles.resultLabelCol}>
-                <Text style={styles.resultLabel}>Resultado do período</Text>
+                <Text style={styles.resultLabel}>Lucro do estúdio</Text>
                 <Text style={styles.resultHint}>
-                  Margem de {formatPercent(profitMargin(dre), 1)} sobre a receita bruta
+                  Margem de {formatPercent(profitMargin(dre), 1)} sobre o faturamento bruto
                 </Text>
               </View>
               <Text
                 style={[
                   styles.resultValue,
-                  { color: dre.resultado >= 0 ? colors.statusSuccess : colors.statusError },
+                  { color: dre.lucroEstudio >= 0 ? colors.statusSuccess : colors.statusError },
                 ]}
               >
-                {formatCurrency(dre.resultado)}
+                {formatCurrency(dre.lucroEstudio)}
               </Text>
             </View>
           </View>
 
           <View style={styles.totalsFooter}>
             <Text style={styles.totalsFooterText}>
-              Total de despesas no período: {formatCurrency(totalExpenses(dre))}
+              Saldo liquidado no período: {formatCurrency(dre.saldo)}
             </Text>
           </View>
         </View>

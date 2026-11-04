@@ -1,17 +1,20 @@
-// Gera os relatórios DRE e Fluxo de Caixa a partir dos lançamentos.
+// Resumo financeiro do período e Fluxo de Caixa.
 //
-// Os dois olham o mesmo dinheiro por regimes diferentes, e é isso que decide o que cada
-// um soma:
-//   DRE          -> competência: a receita é a venda, na data do atendimento.
-//   Fluxo de Caixa -> caixa: o que foi liquidado, na data da liquidação.
+// `getFinancialSummary` é a ÚNICA fonte dos números do mês. O Painel e a tela de
+// Lançamentos consomem os dois o mesmo objeto, para que não exista mais uma conta no
+// servidor e outra somada no celular — era daí que vinha faturamento R$ 180,00 no Painel
+// e R$ 220,00 em Lançamentos para o mesmo mês.
 //
-// Por isso a receita do DRE ignora a origem 'infinitepay'. O extrato e o relatório do
-// Booksy descrevem o mesmo atendimento em momentos diferentes (a venda e o repasse que
-// caiu na conta); somar os dois dobraria o faturamento do mês. O Booksy é a fonte da
-// receita porque é o único que diz o que foi vendido e quem atendeu — o extrato não
-// nomeia a profissional, então também não serviria para a comissão.
-// As DESPESAS do extrato continuam valendo: são dinheiro que saiu da conta de verdade.
-// O Fluxo de Caixa usa as duas origens sem ressalva: ali o extrato é a fonte legítima.
+// Regimes (é o que decide qual data cada número usa):
+//   competência -> faturamento, descontos, taxas, comissões e despesas, pela data do fato
+//                  (`occurredAt`). É o resultado do mês, tenha o dinheiro entrado ou não.
+//   caixa       -> `saldo`, só o que foi liquidado, pela data da liquidação (`settledAt`).
+//
+// Toda receita conta no faturamento, qualquer que seja a origem (manual, Booksy ou
+// InfinitePay). Atenção ao que isso implica: o Booksy registra a venda e o extrato
+// registra o recebimento do mesmo atendimento, então importar as duas origens para um
+// mês que se sobrepõe conta essa receita duas vezes. Quem mostra essa diferença é a
+// conciliação (reconciliation.service.ts), não este resumo.
 import { Transaction } from '../../models/transaction.model.js';
 import { AppError } from '../../shared/utils/app-error.js';
 
@@ -20,45 +23,95 @@ export interface DateRange {
   end: Date;
 }
 
+/**
+ * Os oito números do mês. Cada definição está no comentário e é a mesma em toda tela.
+ * Comissão é repasse à profissional e fica em LINHA PRÓPRIA: somá-la às despesas fazia o
+ * Painel mostrar "Despesas R$ 63,00" para um mês sem nenhuma despesa lançada.
+ */
+export interface FinancialSummary {
+  /** Soma do valor bruto das receitas não canceladas. */
+  faturamentoBruto: number;
+  /** Descontos concedidos nessas receitas. */
+  descontos: number;
+  /** Taxas de meio de pagamento retidas nessas receitas. */
+  taxas: number;
+  /** faturamentoBruto − descontos − taxas. */
+  receitaLiquida: number;
+  /** Repasse às profissionais. Não é despesa do estúdio. */
+  comissoes: number;
+  /** Apenas lançamentos do tipo despesa, pelo valor bruto. */
+  despesas: number;
+  /** receitaLiquida − comissoes − despesas. */
+  lucroEstudio: number;
+  /** Regime de caixa: entradas liquidadas menos saídas liquidadas no período. */
+  saldo: number;
+}
+
+function roundCurrency(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
 export class ReportService {
-  async getDre(range: DateRange): Promise<Record<string, number>> {
-    const entries = await Transaction.find({
-      deletedAt: null,
-      occurredAt: { $gte: range.start, $lte: range.end },
-      status: { $ne: 'cancelada' },
-    }).lean();
+  async getFinancialSummary(range: DateRange): Promise<FinancialSummary> {
+    const [accrual, settled] = await Promise.all([
+      // Competência: o fato aconteceu no período, independente do pagamento.
+      Transaction.find({
+        deletedAt: null,
+        status: { $ne: 'cancelada' },
+        occurredAt: { $gte: range.start, $lte: range.end },
+      })
+        .select('type grossAmount discountAmount feeAmount commissionAmount')
+        .lean(),
+      // Caixa: o dinheiro entrou ou saiu no período.
+      Transaction.find({
+        deletedAt: null,
+        status: 'liquidada',
+        settledAt: { $gte: range.start, $lte: range.end },
+      })
+        .select('type netAmount')
+        .lean(),
+    ]);
 
-    const totals = {
-      receitaBruta: 0,
-      descontos: 0,
-      taxas: 0,
-      receitaLiquida: 0,
-      custosVariaveis: 0,
-      despesasFixas: 0,
-      resultado: 0,
-    };
+    let faturamentoBruto = 0;
+    let descontos = 0;
+    let taxas = 0;
+    let comissoes = 0;
+    let despesas = 0;
 
-    for (const entry of entries) {
+    for (const entry of accrual) {
       if (entry.type === 'receita') {
-        // Receita do extrato é a contrapartida do que o Booksy já lançou como venda.
-        // Quem confere uma contra a outra é a conciliação, não o DRE.
-        if (entry.origin === 'infinitepay') continue;
-        totals.receitaBruta += entry.grossAmount;
-        totals.descontos += entry.discountAmount;
-        totals.taxas += entry.feeAmount;
-        totals.receitaLiquida += entry.grossAmount - entry.discountAmount - entry.feeAmount;
-        totals.custosVariaveis += entry.commissionAmount;
-        totals.resultado += entry.studioNetProfit;
-      } else if (entry.costType === 'fixo') {
-        totals.despesasFixas += entry.grossAmount;
-        totals.resultado -= entry.grossAmount;
+        faturamentoBruto += entry.grossAmount;
+        descontos += entry.discountAmount;
+        taxas += entry.feeAmount;
+        comissoes += entry.commissionAmount;
       } else {
-        totals.custosVariaveis += entry.grossAmount;
-        totals.resultado -= entry.grossAmount;
+        despesas += entry.grossAmount;
       }
     }
 
-    return totals;
+    let saldo = 0;
+    for (const entry of settled) {
+      saldo += entry.type === 'receita' ? entry.netAmount : -entry.netAmount;
+    }
+
+    faturamentoBruto = roundCurrency(faturamentoBruto);
+    descontos = roundCurrency(descontos);
+    taxas = roundCurrency(taxas);
+    comissoes = roundCurrency(comissoes);
+    despesas = roundCurrency(despesas);
+
+    const receitaLiquida = roundCurrency(faturamentoBruto - descontos - taxas);
+
+    return {
+      faturamentoBruto,
+      descontos,
+      taxas,
+      receitaLiquida,
+      comissoes,
+      despesas,
+      lucroEstudio: roundCurrency(receitaLiquida - comissoes - despesas),
+      saldo: roundCurrency(saldo),
+    };
   }
 
   async getCashFlow(range: DateRange): Promise<{ date: string; amount: number }[]> {
@@ -78,7 +131,7 @@ export class ReportService {
 
     return [...daily.entries()].map(([date, amount]) => ({
       date,
-      amount: Math.round((amount + Number.EPSILON) * 100) / 100,
+      amount: roundCurrency(amount),
     }));
   }
 
