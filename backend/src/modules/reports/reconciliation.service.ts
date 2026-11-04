@@ -160,8 +160,9 @@ export class ReconciliationService {
       divergencias.push({
         tipo: 'sem_booksy',
         descricao:
-          'Entrou dinheiro na conta neste período, mas nenhum atendimento do Booksy foi '
-          + 'importado para comparar. Importe o relatório do Booksy do mesmo período.',
+          'Entrou dinheiro na conta neste período, mas não há atendimento do Booksy neste '
+          + 'mês para comparar. Confira em "Períodos importados" de que mês é cada '
+          + 'arquivo: pode ser só o mês selecionado que está fora do relatório.',
         valor: input.liquidoReceber,
       });
     }
@@ -170,8 +171,9 @@ export class ReconciliationService {
       divergencias.push({
         tipo: 'sem_infinitepay',
         descricao:
-          'Há atendimentos do Booksy neste período, mas nenhum movimento da InfinitePay foi '
-          + 'importado. Importe o extrato do mesmo período.',
+          'Há atendimentos do Booksy neste período, mas nenhum movimento da InfinitePay '
+          + 'neste mês. Confira em "Períodos importados" de que mês é cada arquivo: pode '
+          + 'ser só o mês selecionado que está fora do extrato.',
         valor: input.vendasLiquidas,
       });
     }
