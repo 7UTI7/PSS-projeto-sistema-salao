@@ -72,14 +72,18 @@ describe('Os dois arquivos reais, de ponta a ponta', () => {
     expect(agosto.body.data.faturamentoBruto).toBeCloseTo(vendidoAgosto[0]?.bruto ?? 0, 2);
     expect(agosto.body.data.descontos).toBeCloseTo(vendidoAgosto[0]?.desconto ?? 0, 2);
 
-    // Outubro é o mês do extrato. O PDF imprime "Total de entradas + 6.938,28".
+    // Outubro é o mês do extrato, e o faturamento dele é ZERO de propósito: o extrato
+    // é o lado do caixa, não a venda. Quem mostra os 6.898,28 que entraram em outubro é
+    // a auditoria, com os três saldos.
     const outubro = await summary(2026, 10);
+    expect(outubro.body.data.faturamentoBruto).toBeCloseTo(0, 2);
+
     const entradasOutubro = await Transaction.aggregate<{ bruto: number }>([
       { $match: { origin: 'infinitepay', type: 'receita', deletedAt: null,
         occurredAt: { $gte: new Date(monthRange(2026, 10).start), $lte: new Date(monthRange(2026, 10).end) } } },
       { $group: { _id: null, bruto: { $sum: '$grossAmount' } } },
     ]);
-    expect(outubro.body.data.faturamentoBruto).toBeCloseTo(entradasOutubro[0]?.bruto ?? 0, 2);
+    expect(entradasOutubro[0]?.bruto ?? 0).toBeCloseTo(6898.28, 2);
   }, 120_000);
 
   it('o resumo do mês confere com a soma dos lançamentos daquele mês', async () => {
@@ -218,6 +222,8 @@ describe('A auditoria com os dois arquivos reais', () => {
 
     // Lançar as retiradas como despesa zeraria o lucro: ela retira quase tudo o que entra.
     expect(dre.body.data.despesas).toBe(0);
-    expect(dre.body.data.faturamentoBruto).toBeCloseTo(6898.28, 2);
+    // E o faturamento de outubro é zero porque só há o extrato no mês — as entradas são
+    // caixa, e aparecem no Saldo Bruto da auditoria, não aqui.
+    expect(dre.body.data.faturamentoBruto).toBeCloseTo(0, 2);
   }, 120_000);
 });

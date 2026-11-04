@@ -214,8 +214,9 @@ describe('POST /api/audits/:period/entries', () => {
       .get('/api/reports/dre')
       .query({ start: '2026-10-01T00:00:00.000Z', end: '2026-10-31T23:59:59.999Z' })
       .set('Authorization', `Bearer ${token}`);
-    // 500 do Booksy + 440 do extrato; os 60 em dinheiro NÃO entram.
-    expect(dre.body.data.faturamentoBruto).toBeCloseTo(940, 2);
+    // Só os 500 do Booksy. Os 440 do extrato são a MESMA venda vista como caixa, e os
+    // 60 em dinheiro já estão nesses 500 — somar qualquer um dos dois dobraria a receita.
+    expect(dre.body.data.faturamentoBruto).toBeCloseTo(500, 2);
   });
 
   it('o motivo "outro" exige a direção', async () => {

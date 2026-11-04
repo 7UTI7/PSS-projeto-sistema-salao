@@ -10,11 +10,20 @@
 //                  (`occurredAt`). É o resultado do mês, tenha o dinheiro entrado ou não.
 //   caixa       -> `saldo`, só o que foi liquidado, pela data da liquidação (`settledAt`).
 //
-// Toda receita conta no faturamento, qualquer que seja a origem (manual, Booksy ou
-// InfinitePay). Atenção ao que isso implica: o Booksy registra a venda e o extrato
-// registra o recebimento do mesmo atendimento, então importar as duas origens para um
-// mês que se sobrepõe conta essa receita duas vezes. Quem confronta as duas é a
-// auditoria (modules/audits/audit.service.ts), não este resumo.
+// FATURAMENTO NÃO INCLUI O EXTRATO, e esta é a regra mais importante do arquivo.
+//
+// O Booksy registra a venda; o extrato da InfinitePay registra o recebimento da MESMA
+// venda. Somar as duas origens conta o mesmo dinheiro duas vezes. Antes isso era só um
+// risco, porque a dona podia importar uma origem só; agora a auditoria exige os dois
+// arquivos do mesmo mês, então o dobro seria garantido — o Painel mostraria R$ 940,00
+// num mês de R$ 500,00 atendidos.
+//
+// Então: o faturamento vem do Booksy e dos lançamentos manuais. O que entrou na conta é
+// assunto dos três saldos da auditoria (modules/audits/audit.service.ts), que é também
+// quem confronta um lado com o outro.
+//
+// As DESPESAS continuam somando qualquer origem, extrato incluído: um Pix enviado a
+// terceiro é dinheiro que saiu de verdade, e não tem contrapartida no Booksy.
 //
 // Linhas com `countsInDre: false` ficam fora dos dois regimes: são as retiradas da
 // titular e os ajustes de auditoria cujo valor já está no faturamento do Booksy. Elas
@@ -64,6 +73,9 @@ export class ReportService {
         countsInDre: { $ne: false },
         status: { $ne: 'cancelada' },
         occurredAt: { $gte: range.start, $lte: range.end },
+        // Receita do extrato fica fora (é a mesma venda do Booksy, vista como caixa);
+        // despesa do extrato entra.
+        $or: [{ type: 'despesa' }, { origin: { $ne: 'infinitepay' } }],
       })
         .select('type grossAmount discountAmount feeAmount commissionAmount')
         .lean(),
