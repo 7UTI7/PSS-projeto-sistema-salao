@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,44 +7,274 @@ import {
   TextInput,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { RootStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
-import { formatCurrency } from '../../utils/formatters';
+import { LoadingState } from '../../components/ui/QueryState';
+import { useCategoriesForType } from '../../hooks/useCategories';
+import {
+  useCreateTransaction,
+  useTransactions,
+  useUpdateTransaction,
+} from '../../hooks/useTransactions';
+import { useAuthStore } from '../../store/authStore';
+import { getApiErrorMessage } from '../../services/api';
+import { DEFAULT_COMMISSION_RATE, SUGGESTED_PAYMENT_FEE_RATES } from '../../config/studio.config';
+import { formatCurrency, formatPercent, parseAmountInput } from '../../utils/formatters';
+import { costTypeLabels, paymentMethodLabels, transactionStatusLabels } from '../../utils/labels';
+import {
+  SELECTABLE_PAYMENT_METHODS,
+  type CostType,
+  type PaymentMethod,
+  type Professional,
+  type TransactionInput,
+  type Transaction,
+  type TransactionStatus,
+  type TransactionType,
+} from '../../types';
 
-const CATEGORIES = ['Cílios', 'Unhas', 'Micropigmentação', 'Estética', 'Insumos'];
-const PROFESSIONALS = ['Nicolle Neris', 'Stephany', 'Camila Santos'];
-const PAYMENT_METHODS = ['Pix', 'Cartão Crédito', 'Cartão Débito', 'Dinheiro'];
+const PROFESSIONALS: Professional[] = ['Nicolle', 'Stefany'];
+const STATUSES: TransactionStatus[] = ['pendente', 'liquidada', 'cancelada'];
+const COST_TYPES: CostType[] = ['variavel', 'fixo'];
+
+/** Campos do formulário. Texto nos numéricos porque o usuário digita "1.234,56". */
+interface FormState {
+  type: TransactionType;
+  amount: string;
+  discount: string;
+  description: string;
+  category: string;
+  professional: Professional;
+  paymentMethod: PaymentMethod;
+  feeRatePercent: string;
+  commissionPercent: string;
+  costType: CostType;
+  status: TransactionStatus;
+  occurredAt: string;
+}
+
+/** Data de hoje em YYYY-MM-DD, o formato que o campo de data aceita. */
+function todayAsInput(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function emptyForm(): FormState {
+  return {
+    type: 'receita',
+    amount: '',
+    discount: '',
+    description: '',
+    category: '',
+    professional: 'Nicolle',
+    paymentMethod: 'pix',
+    feeRatePercent: '0',
+    commissionPercent: String(DEFAULT_COMMISSION_RATE * 100),
+    costType: 'variavel',
+    status: 'liquidada',
+    occurredAt: todayAsInput(),
+  };
+}
+
+/**
+ * Reconstrói o formulário a partir do lançamento salvo. As alíquotas não voltam na
+ * resposta da API — só os valores já calculados —, então são derivadas da base de
+ * cálculo para que uma edição não zere taxa e comissão sem a dona perceber.
+ */
+function formFromTransaction(transaction: Transaction): FormState {
+  const baseAmount = transaction.grossAmount - transaction.discountAmount;
+  const asPercent = (value: number) => (baseAmount > 0 ? ((value / baseAmount) * 100).toFixed(2) : '0');
+
+  return {
+    type: transaction.type,
+    amount: String(transaction.grossAmount),
+    discount: transaction.discountAmount ? String(transaction.discountAmount) : '',
+    description: transaction.description,
+    category: transaction.category,
+    professional: transaction.professional,
+    paymentMethod: transaction.paymentMethod,
+    feeRatePercent: asPercent(transaction.feeAmount),
+    commissionPercent: asPercent(transaction.commissionAmount),
+    costType: transaction.costType ?? 'variavel',
+    status: transaction.status,
+    occurredAt: transaction.occurredAt.slice(0, 10),
+  };
+}
+
+/** Converte YYYY-MM-DD em ISO completo; a API exige data válida em occurredAt. */
+function dateInputToIso(value: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const [, year, month, day] = match;
+  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), 12, 0, 0));
+  return isNaN(date.getTime()) ? null : date.toISOString();
+}
 
 export default function NewTransactionScreen() {
   const navigation = useNavigation();
-  const [type, setType] = useState<'INCOME' | 'EXPENSE'>('INCOME');
-  const [amount, setAmount] = useState('180');
-  const [description, setDescription] = useState('Efeito Wispy - Cílios');
-  const [selectedCategory, setSelectedCategory] = useState('Cílios');
-  const [selectedProf, setSelectedProf] = useState('Nicolle Neris');
-  const [selectedPayment, setSelectedPayment] = useState('Cartão');
+  const route = useRoute<RouteProp<RootStackParamList, 'NewTransaction'>>();
+  const transactionId = route.params?.transactionId;
+  const isEditing = Boolean(transactionId);
 
-  const numericAmount = parseFloat(amount.replace(',', '.')) || 0;
-  const estimatedCommission = numericAmount * 0.4; // 40% comissão padrão
+  const isAdmin = useAuthStore((state) => state.user?.role === 'admin');
+
+  // A edição reusa a lista já em cache; não existe GET /transactions/:id na API.
+  const { data: transactions, isPending: loadingTransactions } = useTransactions();
+  const existing = useMemo(
+    () => transactions?.find((item) => item._id === transactionId),
+    [transactions, transactionId]
+  );
+
+  /**
+   * O formulário é um único objeto que começa nulo. Em modo edição o lançamento chega
+   * depois (vem da lista), e `draft ?? initialForm` resolve isso sem efeito de
+   * sincronização: enquanto a dona não tocou em nada, o formulário acompanha o que a
+   * API trouxe; no primeiro toque o rascunho passa a valer e revalidações em segundo
+   * plano não apagam o que ela digitou.
+   */
+  const [draft, setDraft] = useState<FormState | null>(null);
+  const initialForm = useMemo(
+    () => (existing ? formFromTransaction(existing) : emptyForm()),
+    [existing]
+  );
+  const form = draft ?? initialForm;
+
+  const { categories, isPending: loadingCategories } = useCategoriesForType(form.type);
+  const createMutation = useCreateTransaction();
+  const updateMutation = useUpdateTransaction();
+  const saving = createMutation.isPending || updateMutation.isPending;
+
+  function update(changes: Partial<FormState>) {
+    setDraft({ ...form, ...changes });
+  }
+
+  /** Taxa sugerida pela forma de pagamento, só em lançamento novo e só para receita. */
+  function handleSelectPaymentMethod(method: PaymentMethod) {
+    const suggested = SUGGESTED_PAYMENT_FEE_RATES[method];
+    const shouldSuggest = !isEditing && form.type === 'receita' && suggested !== undefined;
+    update({
+      paymentMethod: method,
+      ...(shouldSuggest ? { feeRatePercent: String(suggested * 100) } : {}),
+    });
+  }
+
+  // A categoria guardada pode não valer para o tipo atual (a dona alternou receita ->
+  // despesa). Vale a derivada, não a guardada: assim nada é apagado do rascunho e o
+  // formulário volta a mostrar a categoria original se ela alternar de volta.
+  const category = categories.some((item) => item.name === form.category) ? form.category : '';
+
+  const grossAmount = parseAmountInput(form.amount);
+  const discountAmount = parseAmountInput(form.discount);
+  const feeRate = parseAmountInput(form.feeRatePercent) / 100;
+  const commissionRate = parseAmountInput(form.commissionPercent) / 100;
+  const { type, description, professional, paymentMethod, costType, status, occurredAt } = form;
+
+  // Prévia local, só para a dona conferir. O valor que vale é o que o servidor
+  // calcula (CalculationService), que é a única fonte de verdade financeira.
+  const preview = useMemo(() => {
+    if (type === 'despesa') {
+      return { baseAmount: grossAmount, feeAmount: 0, commissionAmount: 0, studioNetProfit: -grossAmount };
+    }
+    const baseAmount = Math.max(grossAmount - discountAmount, 0);
+    const feeAmount = baseAmount * feeRate;
+    const commissionAmount = baseAmount * commissionRate;
+    return {
+      baseAmount,
+      feeAmount,
+      commissionAmount,
+      studioNetProfit: baseAmount - feeAmount - commissionAmount,
+    };
+  }, [type, grossAmount, discountAmount, feeRate, commissionRate]);
+
+  function validate(): string | null {
+    if (!description.trim()) return 'Descreva o procedimento ou a despesa.';
+    if (grossAmount <= 0) return 'Informe um valor maior que zero.';
+    if (discountAmount > grossAmount) return 'O desconto não pode superar o valor bruto.';
+    if (!category) return 'Escolha uma categoria do catálogo.';
+    if (feeRate < 0 || feeRate > 1) return 'A taxa deve estar entre 0% e 100%.';
+    if (commissionRate < 0 || commissionRate > 1) return 'A comissão deve estar entre 0% e 100%.';
+    if (!dateInputToIso(occurredAt)) return 'Informe a data no formato AAAA-MM-DD.';
+    return null;
+  }
 
   function handleSave() {
-    Alert.alert(
-      'Lançamento Registrado!',
-      `Serviço: ${description}\nValor: ${formatCurrency(numericAmount)}\nProfissional: ${selectedProf}\nForma: ${selectedPayment}`,
-      [{ text: 'OK', onPress: () => navigation.goBack() }]
+    const validationError = validate();
+    if (validationError) {
+      Alert.alert('Confira os dados', validationError);
+      return;
+    }
+
+    const occurredAtIso = dateInputToIso(occurredAt) as string;
+    const input: TransactionInput = {
+      type,
+      description: description.trim(),
+      grossAmount,
+      discountAmount,
+      paymentFeeRate: type === 'receita' ? feeRate : 0,
+      professionalCommissionRate: type === 'receita' ? commissionRate : 0,
+      category,
+      paymentMethod,
+      occurredAt: occurredAtIso,
+      status,
+      // Edição preserva a origem; lançamento novo é sempre manual.
+      origin: existing?.origin ?? 'manual',
+      ...(isAdmin ? { professional } : {}),
+      ...(type === 'despesa' ? { costType } : {}),
+      // A API preenche settledAt com a data de hoje quando o status é liquidada e
+      // nada é informado; em edição, manter a data original evita remexer no caixa.
+      ...(status === 'liquidada' && existing?.settledAt ? { settledAt: existing.settledAt } : {}),
+    };
+
+    const onError = (mutationError: unknown) =>
+      Alert.alert('Não foi possível salvar', getApiErrorMessage(mutationError));
+    const onSuccess = () => navigation.goBack();
+
+    if (isEditing && transactionId) {
+      updateMutation.mutate({ id: transactionId, input }, { onError, onSuccess });
+    } else {
+      createMutation.mutate(input, { onError, onSuccess });
+    }
+  }
+
+  if (isEditing && loadingTransactions) {
+    return (
+      <View style={styles.screen}>
+        <LoadingState label="Carregando lançamento..." />
+      </View>
     );
   }
 
+  if (isEditing && !existing) {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.notFound}>
+          <Ionicons name="alert-circle-outline" size={36} color={colors.statusWarning} />
+          <Text style={styles.notFoundTitle}>Lançamento não encontrado</Text>
+          <Text style={styles.notFoundText}>
+            Ele pode ter sido excluído ou estar fora dos 500 registros mais recentes.
+          </Text>
+          <TouchableOpacity style={styles.notFoundBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.notFoundBtnText}>Voltar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const isIncome = type === 'receita';
+
   return (
     <View style={styles.screen}>
-      {/* Modal Top Header com botão Fechar */}
       <View style={styles.modalHeader}>
         <View style={styles.dragPill} />
         <View style={styles.headerBar}>
           <View>
-            <Text style={styles.headerTitle}>Novo Lançamento</Text>
+            <Text style={styles.headerTitle}>
+              {isEditing ? 'Editar Lançamento' : 'Novo Lançamento'}
+            </Text>
             <Text style={styles.headerSubtitle}>Registro de procedimento ou despesa</Text>
           </View>
           <TouchableOpacity
@@ -61,25 +291,21 @@ export default function NewTransactionScreen() {
         style={styles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
-        {/* Controle Segmentado (Receita x Despesa) */}
+        {/* Receita x Despesa. Colaboradora só registra receita (regra do backend). */}
         <View style={styles.segmentedContainer}>
           <TouchableOpacity
-            style={[styles.segmentBtn, type === 'INCOME' && styles.segmentBtnActive]}
-            onPress={() => setType('INCOME')}
+            style={[styles.segmentBtn, isIncome && styles.segmentBtnActive]}
+            onPress={() => update({ type: 'receita' })}
           >
             <Ionicons
               name="arrow-up-circle"
               size={17}
-              color={type === 'INCOME' ? '#FFFFFF' : colors.graphiteMuted}
+              color={isIncome ? '#FFFFFF' : colors.graphiteMuted}
               style={styles.segmentIcon}
             />
-            <Text
-              style={[
-                styles.segmentText,
-                type === 'INCOME' && styles.segmentTextActive,
-              ]}
-            >
+            <Text style={[styles.segmentText, isIncome && styles.segmentTextActive]}>
               Receita (Atendimento)
             </Text>
           </TouchableOpacity>
@@ -87,160 +313,274 @@ export default function NewTransactionScreen() {
           <TouchableOpacity
             style={[
               styles.segmentBtn,
-              type === 'EXPENSE' && styles.segmentBtnActiveExpense,
+              !isIncome && styles.segmentBtnActiveExpense,
+              !isAdmin && styles.segmentBtnDisabled,
             ]}
-            onPress={() => setType('EXPENSE')}
+            disabled={!isAdmin}
+            onPress={() => update({ type: 'despesa' })}
           >
             <Ionicons
               name="arrow-down-circle"
               size={17}
-              color={type === 'EXPENSE' ? '#FFFFFF' : colors.graphiteMuted}
+              color={!isIncome ? '#FFFFFF' : colors.graphiteMuted}
               style={styles.segmentIcon}
             />
-            <Text
-              style={[
-                styles.segmentText,
-                type === 'EXPENSE' && styles.segmentTextActive,
-              ]}
-            >
+            <Text style={[styles.segmentText, !isIncome && styles.segmentTextActive]}>
               Despesa (Insumo)
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Card de Valor com R$ */}
+        {!isAdmin ? (
+          <Text style={styles.roleHint}>
+            Seu perfil registra apenas receitas dos próprios atendimentos.
+          </Text>
+        ) : null}
+
         <View style={styles.amountCard}>
-          <Text style={styles.fieldLabel}>VALOR TOTAL DO LANÇAMENTO</Text>
+          <Text style={styles.fieldLabel}>VALOR BRUTO DO LANÇAMENTO</Text>
           <View style={styles.amountInputRow}>
             <Text style={styles.currencyPrefix}>R$</Text>
             <TextInput
               style={styles.amountInput}
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="numeric"
+              value={form.amount}
+              onChangeText={(value) => update({ amount: value })}
+              keyboardType="decimal-pad"
               placeholder="0,00"
               placeholderTextColor={colors.lavenderSubtle}
             />
           </View>
+
+          {isIncome ? (
+            <View style={styles.inlineField}>
+              <Text style={styles.fieldLabel}>DESCONTO CONCEDIDO (R$)</Text>
+              <TextInput
+                style={styles.textInput}
+                value={form.discount}
+                onChangeText={(value) => update({ discount: value })}
+                keyboardType="decimal-pad"
+                placeholder="0,00"
+                placeholderTextColor={colors.graphiteMuted}
+              />
+            </View>
+          ) : null}
         </View>
 
-        {/* Formulário de Detalhes */}
         <View style={styles.formCard}>
           <Text style={styles.fieldLabel}>PROCEDIMENTO / DESCRIÇÃO</Text>
           <TextInput
             style={styles.textInput}
-            value={description}
-            onChangeText={setDescription}
+            value={form.description}
+            onChangeText={(value) => update({ description: value })}
             placeholder="Ex: Efeito Wispy, Fibra de Vidro..."
             placeholderTextColor={colors.graphiteMuted}
+            maxLength={240}
           />
 
-          {/* Categoria */}
-          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>CATEGORIA DE ATELIER</Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.pillsScroll}
-          >
-            {CATEGORIES.map((cat) => {
-              const isSelected = selectedCategory === cat;
-              return (
-                <TouchableOpacity
-                  key={cat}
-                  onPress={() => setSelectedCategory(cat)}
-                  style={[
-                    styles.categoryPill,
-                    isSelected && styles.categoryPillSelected,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.categoryPillText,
-                      isSelected && styles.categoryPillTextSelected,
-                    ]}
-                  >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+          <Text style={[styles.fieldLabel, styles.fieldSpacing]}>DATA DO ATENDIMENTO</Text>
+          <TextInput
+            style={styles.textInput}
+            value={form.occurredAt}
+            onChangeText={(value) => update({ occurredAt: value })}
+            placeholder="AAAA-MM-DD"
+            placeholderTextColor={colors.graphiteMuted}
+            maxLength={10}
+          />
+          <Text style={styles.fieldHelp}>
+            É a data que entra no DRE (regime de competência).
+          </Text>
 
-          {/* Profissional Responsável */}
-          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>ESPECIALISTA DESIGNADA</Text>
-          <View style={styles.profRow}>
-            {PROFESSIONALS.map((prof) => {
-              const isSelected = selectedProf === prof;
+          {/* Categorias vêm do catálogo da API; o backend recusa o que não está nele. */}
+          <Text style={[styles.fieldLabel, styles.fieldSpacing]}>CATEGORIA DO CATÁLOGO</Text>
+          {loadingCategories ? (
+            <ActivityIndicator color={colors.primary} style={styles.inlineLoader} />
+          ) : categories.length === 0 ? (
+            <Text style={styles.fieldHelp}>
+              Nenhuma categoria de {isIncome ? 'receita' : 'despesa'} ativa no catálogo.
+              A administradora cadastra em Ajustes → Categorias.
+            </Text>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.pillsScroll}>
+              {categories.map((item) => {
+                const isSelected = category === item.name;
+                return (
+                  <TouchableOpacity
+                    key={item._id}
+                    onPress={() => update({ category: item.name })}
+                    style={[styles.categoryPill, isSelected && styles.categoryPillSelected]}
+                  >
+                    <Text
+                      style={[styles.categoryPillText, isSelected && styles.categoryPillTextSelected]}
+                    >
+                      {item.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          {isAdmin ? (
+            <>
+              <Text style={[styles.fieldLabel, styles.fieldSpacing]}>ESPECIALISTA DESIGNADA</Text>
+              <View style={styles.pillRow}>
+                {PROFESSIONALS.map((item) => {
+                  const isSelected = professional === item;
+                  return (
+                    <TouchableOpacity
+                      key={item}
+                      onPress={() => update({ professional: item })}
+                      style={[styles.pill, isSelected && styles.pillSelectedDark]}
+                    >
+                      <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
+                        {item}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+
+          <Text style={[styles.fieldLabel, styles.fieldSpacing]}>MEIO DE PAGAMENTO</Text>
+          <View style={styles.pillRow}>
+            {SELECTABLE_PAYMENT_METHODS.map((method) => {
+              const isSelected = paymentMethod === method;
               return (
                 <TouchableOpacity
-                  key={prof}
-                  onPress={() => setSelectedProf(prof)}
-                  style={[styles.profPill, isSelected && styles.profPillSelected]}
+                  key={method}
+                  onPress={() => handleSelectPaymentMethod(method)}
+                  style={[styles.pill, isSelected && styles.pillSelectedDark]}
                 >
-                  <Text
-                    style={[
-                      styles.profPillText,
-                      isSelected && styles.profPillTextSelected,
-                    ]}
-                  >
-                    {prof}
+                  <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
+                    {paymentMethodLabels[method]}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          {/* Meio de Pagamento */}
-          <Text style={[styles.fieldLabel, { marginTop: 16 }]}>MEIO DE PAGAMENTO</Text>
-          <View style={styles.profRow}>
-            {PAYMENT_METHODS.map((pm) => {
-              const isSelected = selectedPayment === pm;
+          {!isIncome ? (
+            <>
+              <Text style={[styles.fieldLabel, styles.fieldSpacing]}>NATUREZA DO CUSTO</Text>
+              <View style={styles.pillRow}>
+                {COST_TYPES.map((item) => {
+                  const isSelected = costType === item;
+                  return (
+                    <TouchableOpacity
+                      key={item}
+                      onPress={() => update({ costType: item })}
+                      style={[styles.pill, isSelected && styles.pillSelectedDark]}
+                    >
+                      <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
+                        {costTypeLabels[item]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.fieldHelp}>
+                Custo fixo (aluguel, internet) e variável (insumos) aparecem separados no DRE.
+              </Text>
+            </>
+          ) : null}
+
+          <Text style={[styles.fieldLabel, styles.fieldSpacing]}>SITUAÇÃO</Text>
+          <View style={styles.pillRow}>
+            {STATUSES.map((item) => {
+              const isSelected = status === item;
               return (
                 <TouchableOpacity
-                  key={pm}
-                  onPress={() => setSelectedPayment(pm)}
-                  style={[styles.profPill, isSelected && styles.profPillSelected]}
+                  key={item}
+                  onPress={() => update({ status: item })}
+                  style={[styles.pill, isSelected && styles.pillSelectedDark]}
                 >
-                  <Text
-                    style={[
-                      styles.profPillText,
-                      isSelected && styles.profPillTextSelected,
-                    ]}
-                  >
-                    {pm}
+                  <Text style={[styles.pillText, isSelected && styles.pillTextSelected]}>
+                    {transactionStatusLabels[item]}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
+          <Text style={styles.fieldHelp}>
+            Liquidada entra no Fluxo de Caixa; pendente conta só no DRE.
+          </Text>
         </View>
 
-        {/* Resumo da Operação com Cálculo de Comissão */}
-        {type === 'INCOME' && (
-          <View style={styles.summaryCard}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Comissão Estimada (40%):</Text>
-              <Text style={styles.summaryValue}>
-                {formatCurrency(estimatedCommission)}
-              </Text>
-            </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Líquido Atelier (60%):</Text>
-              <Text style={[styles.summaryValue, { color: colors.violetRoyal, fontWeight: '700' }]}>
-                {formatCurrency(numericAmount - estimatedCommission)}
-              </Text>
-            </View>
-          </View>
-        )}
+        {/* Taxa e comissão só existem em receita, e só a admin as define. */}
+        {isIncome && isAdmin ? (
+          <View style={styles.formCard}>
+            <Text style={styles.fieldLabel}>TAXA DA MAQUININHA (%)</Text>
+            <TextInput
+              style={styles.textInput}
+              value={form.feeRatePercent}
+              onChangeText={(value) => update({ feeRatePercent: value })}
+              keyboardType="decimal-pad"
+              placeholder="3,99"
+              placeholderTextColor={colors.graphiteMuted}
+            />
 
-        {/* Botão de Confirmação */}
+            <Text style={[styles.fieldLabel, styles.fieldSpacing]}>COMISSÃO DA PROFISSIONAL (%)</Text>
+            <TextInput
+              style={styles.textInput}
+              value={form.commissionPercent}
+              onChangeText={(value) => update({ commissionPercent: value })}
+              keyboardType="decimal-pad"
+              placeholder="40"
+              placeholderTextColor={colors.graphiteMuted}
+            />
+            <Text style={styles.fieldHelp}>
+              Sugestões por forma de pagamento ficam em src/config/studio.config.ts.
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Prévia do cálculo: confere antes de salvar; o servidor recalcula ao gravar. */}
+        {isIncome ? (
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryTitle}>Prévia do cálculo</Text>
+
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Base (bruto − desconto)</Text>
+              <Text style={styles.summaryValue}>{formatCurrency(preview.baseAmount)}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Taxa ({formatPercent(feeRate)})</Text>
+              <Text style={styles.summaryValue}>− {formatCurrency(preview.feeAmount)}</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>Comissão ({formatPercent(commissionRate)})</Text>
+              <Text style={styles.summaryValue}>− {formatCurrency(preview.commissionAmount)}</Text>
+            </View>
+            <View style={[styles.summaryRow, styles.summaryTotalRow]}>
+              <Text style={styles.summaryTotalLabel}>Líquido do studio</Text>
+              <Text style={styles.summaryTotalValue}>
+                {formatCurrency(preview.studioNetProfit)}
+              </Text>
+            </View>
+
+            <Text style={styles.summaryNote}>
+              Valor conferido e recalculado no servidor ao salvar.
+            </Text>
+          </View>
+        ) : null}
+
         <TouchableOpacity
-          style={styles.saveBtn}
+          style={[styles.saveBtn, saving && styles.saveBtnDisabled]}
           activeOpacity={0.85}
           onPress={handleSave}
+          disabled={saving}
         >
-          <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
-          <Text style={styles.saveBtnText}>Confirmar e Salvar Lançamento</Text>
+          {saving ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <>
+              <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.saveBtnText}>
+                {isEditing ? 'Salvar alterações' : 'Confirmar e salvar lançamento'}
+              </Text>
+            </>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -297,7 +637,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 48,
   },
   segmentedContainer: {
     flexDirection: 'row',
@@ -322,6 +662,9 @@ const styles = StyleSheet.create({
   segmentBtnActiveExpense: {
     backgroundColor: colors.statusError,
   },
+  segmentBtnDisabled: {
+    opacity: 0.45,
+  },
   segmentIcon: {
     marginRight: 6,
   },
@@ -332,6 +675,13 @@ const styles = StyleSheet.create({
   },
   segmentTextActive: {
     color: '#FFFFFF',
+  },
+  roleHint: {
+    fontFamily: typography.fonts.body,
+    fontSize: 11,
+    color: colors.graphiteMuted,
+    marginBottom: 12,
+    marginTop: -6,
   },
   amountCard: {
     backgroundColor: '#FFFFFF',
@@ -348,6 +698,26 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     color: colors.graphiteMuted,
     marginBottom: 6,
+  },
+  fieldSpacing: {
+    marginTop: 16,
+  },
+  fieldHelp: {
+    fontFamily: typography.fonts.body,
+    fontSize: 10,
+    color: colors.graphiteMuted,
+    marginTop: 5,
+    lineHeight: 15,
+  },
+  inlineField: {
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderWhisper,
+  },
+  inlineLoader: {
+    alignSelf: 'flex-start',
+    marginVertical: 6,
   },
   amountInputRow: {
     flexDirection: 'row',
@@ -410,12 +780,12 @@ const styles = StyleSheet.create({
   categoryPillTextSelected: {
     color: '#FFFFFF',
   },
-  profRow: {
+  pillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
   },
-  profPill: {
+  pill: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: borderRadius.full,
@@ -423,16 +793,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderWhisper,
   },
-  profPillSelected: {
+  pillSelectedDark: {
     backgroundColor: colors.graphiteText,
     borderColor: colors.graphiteText,
   },
-  profPillText: {
+  pillText: {
     fontFamily: typography.fonts.bodyMedium,
     fontSize: 12,
     color: colors.graphiteText,
   },
-  profPillTextSelected: {
+  pillTextSelected: {
     color: '#FFFFFF',
   },
   summaryCard: {
@@ -442,6 +812,14 @@ const styles = StyleSheet.create({
     borderColor: colors.lavenderSubtle,
     marginBottom: 16,
     padding: 14,
+  },
+  summaryTitle: {
+    fontFamily: typography.fonts.bodyBold,
+    fontSize: 11,
+    color: colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 8,
   },
   summaryRow: {
     flexDirection: 'row',
@@ -454,9 +832,31 @@ const styles = StyleSheet.create({
     color: colors.graphiteText,
   },
   summaryValue: {
+    fontFamily: typography.fonts.bodySemiBold,
+    fontSize: 12,
+    color: colors.graphiteText,
+  },
+  summaryTotalRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: colors.lavenderSubtle,
+  },
+  summaryTotalLabel: {
     fontFamily: typography.fonts.bodyBold,
     fontSize: 13,
     color: colors.graphiteText,
+  },
+  summaryTotalValue: {
+    fontFamily: typography.fonts.bodyBold,
+    fontSize: 14,
+    color: colors.violetRoyal,
+  },
+  summaryNote: {
+    fontFamily: typography.fonts.body,
+    fontSize: 10,
+    color: colors.graphiteMuted,
+    marginTop: 8,
   },
   saveBtn: {
     backgroundColor: colors.violetRoyal,
@@ -468,9 +868,42 @@ const styles = StyleSheet.create({
     gap: 8,
     ...shadows.card,
   },
+  saveBtnDisabled: {
+    opacity: 0.7,
+  },
   saveBtnText: {
     fontFamily: typography.fonts.bodyBold,
     fontSize: 14,
+    color: '#FFFFFF',
+  },
+  notFound: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    gap: 8,
+  },
+  notFoundTitle: {
+    fontFamily: typography.fonts.headline,
+    fontSize: 17,
+    color: colors.graphiteText,
+  },
+  notFoundText: {
+    fontFamily: typography.fonts.body,
+    fontSize: 12,
+    color: colors.graphiteMuted,
+    textAlign: 'center',
+  },
+  notFoundBtn: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
+  },
+  notFoundBtnText: {
+    fontFamily: typography.fonts.bodyBold,
+    fontSize: 13,
     color: '#FFFFFF',
   },
 });

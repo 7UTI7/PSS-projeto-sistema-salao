@@ -14,7 +14,7 @@ const transactionSchema = z.object({
   professional: z.enum(['Nicolle', 'Stefany']).optional(),
   category: z.string().trim().min(1).max(100),
   costType: z.enum(['fixo', 'variavel']).optional(),
-  paymentMethod: z.enum(['pix', 'credito', 'debito', 'dinheiro']),
+  paymentMethod: z.enum(['pix', 'credito', 'debito', 'dinheiro', 'nao_informado']),
   occurredAt: z.coerce.date(),
   settledAt: z.coerce.date().optional(),
   status: z.enum(['pendente', 'liquidada', 'cancelada']).default('pendente'),

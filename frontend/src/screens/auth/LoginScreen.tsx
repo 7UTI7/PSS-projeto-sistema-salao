@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
@@ -15,7 +14,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/types';
 import { authService } from '../../services/auth.service';
 import { useAuthStore } from '../../store/authStore';
-import { getApiErrorMessage } from '../../services/api';
+import { DEFAULT_API_URL, getApiErrorMessage } from '../../services/api';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { Button } from '../../components/ui/Button';
 
@@ -36,26 +35,15 @@ export default function LoginScreen({ navigation }: Props) {
     setLoading(true);
     try {
       const data = await authService.login(email.trim(), password);
-      await setAuth(data.token, data.user, data.mustChangePassword);
+      // mustChangePassword vem dentro de user: o backend soma a troca forçada no
+      // primeiro acesso e a senha vencida há mais de 90 dias.
+      await setAuth(data.token, data.user);
     } catch (error) {
       const msg = getApiErrorMessage(error);
       Alert.alert('Erro no Login', msg);
     } finally {
       setLoading(false);
     }
-  }
-
-  // Permite visualizar todas as telas sem depender do backend
-  function handleEnterDemo() {
-    setAuth('demo-token-123', {
-      _id: 'demo-user-id',
-      name: 'Nicolle Neris',
-      email: 'nicolle@studio.com',
-      role: 'admin',
-      isActive: true,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
   }
 
   return (
@@ -116,17 +104,7 @@ export default function LoginScreen({ navigation }: Props) {
               style={styles.submitBtn}
             />
 
-            <View style={styles.dividerContainer}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OU MODO VISUAL</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <Button
-              title="Ver Telas (Modo Demonstração)"
-              variant="secondary"
-              onPress={handleEnterDemo}
-            />
+            <Text style={styles.apiHint}>Conectado a {DEFAULT_API_URL}</Text>
           </View>
         </View>
       </ScrollView>
@@ -223,21 +201,11 @@ const styles = StyleSheet.create({
   submitBtn: {
     marginBottom: 12,
   },
-  dividerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 14,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.borderWhisper,
-  },
-  dividerText: {
-    fontFamily: typography.fonts.bodySemiBold,
+  apiHint: {
+    fontFamily: typography.fonts.body,
     fontSize: 10,
     color: colors.graphiteMuted,
-    letterSpacing: 1,
-    marginHorizontal: 10,
+    textAlign: 'center',
+    marginTop: 6,
   },
 });

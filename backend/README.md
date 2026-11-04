@@ -77,10 +77,42 @@ npm run coverage
 - `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/verify-email`
 - `POST /api/auth/forgot-password`, `GET|POST /api/auth/reset-password`, `POST /api/auth/change-password`
 - `POST /api/auth/users`, `GET /api/auth/users`, `DELETE /api/auth/users/:id` (somente admin; desativação lógica, sem hard delete)
-- `GET|POST /api/transactions` e `DELETE /api/transactions/:id` (soft delete)
-- `GET /api/reports/dre` e `GET /api/reports/cash-flow` (somente admin; `start` e `end` em ISO 8601)
+- `GET|POST /api/transactions`, `PUT /api/transactions/:id` (corpo completo, não aceita patch parcial) e `DELETE /api/transactions/:id` (soft delete)
+- `GET /api/categories`; `GET|POST|PUT|DELETE /api/categories/:id` (escrita somente admin)
+- `GET /api/reports/dre` e `GET /api/reports/cash-flow` (somente admin; `start` e `end` em ISO 8601 completo)
+- `POST /api/imports/preview`, `POST /api/imports`, `GET /api/imports` e `DELETE /api/imports/:id` (somente admin)
 
 Cadastro público sempre cria `colaborador`; somente o admin pode criar outras contas ou atribuir papel. O JWT expira em 8 horas e o papel é recarregado do banco em cada requisição. Senhas usam bcrypt com 12 rounds e até 72 bytes (limite efetivo do bcrypt). Tokens de confirmação/reset são UUID v4 aleatórios, armazenados como SHA-256 e expiram em 15 minutos.
+
+## Importação de relatórios
+
+`POST /api/imports` recebe `multipart/form-data` com `file` (.xlsx ou .csv, até 8 MB), `source`
+(`booksy` ou `infinitepay`) e `defaultCommissionRate` opcional (fração entre 0 e 1). As duas
+origens entram de formas diferentes, de propósito, para não contar o mesmo atendimento duas vezes:
+
+| Origem | O que é lido | Vira | Observação |
+|---|---|---|---|
+| `booksy` | aba "Lista de agendamentos" do business-performance-report | **receitas** | uma por atendimento, com serviço, profissional, bruto e desconto; "Concluída" entra como `liquidada` com `settledAt` na data do atendimento, e "Cancelada" entra como `cancelada` |
+| `infinitepay` | extrato de vendas (CSV) | **despesas de taxa** | só a tarifa da maquininha, como custo variável na categoria "Taxas InfinitePay"; linhas sem taxa (Pix) não geram lançamento |
+
+A venda em si entra pelo Booksy; o extrato da InfinitePay acrescenta o custo que o Booksy não
+mostra. Importar as duas dá o líquido real do mês sem duplicar faturamento.
+
+Deduplicação em duas camadas: o `contentHash` (SHA-256 do arquivo) recusa o mesmo arquivo com
+`409`, e o índice único `{ origin, externalId }` impede que um atendimento já importado volte
+num arquivo de período sobreposto. `POST /api/imports/preview` roda o mesmo parsing sem gravar
+nada e devolve o resumo, as linhas ignoradas com o motivo e as categorias que seriam criadas.
+`DELETE /api/imports/:id` desfaz o lote: os lançamentos vão para a lixeira e perdem o
+`externalId`, liberando o reenvio do arquivo corrigido.
+
+As colunas são localizadas pelo nome (com apelidos e sem acento), nunca pela posição, e o
+cabeçalho é procurado nas primeiras linhas da aba — no relatório do Booksy a tabela começa na
+linha 5. Quando nada casa, o erro lista as colunas encontradas, para adaptar os apelidos em
+`src/modules/imports/*.parser.ts`.
+
+Categorias que vêm no arquivo e não existem no catálogo são criadas automaticamente; uma
+categoria existente mas inativa faz a importação falhar com `INACTIVE_CATEGORY`, para a dona
+decidir se reativa.
 
 O cálculo de receita segue a ordem solicitada: base = bruto - desconto; taxa = base × alíquota; líquido = base - taxa; comissão = base × percentual; resultado do estúdio = líquido - comissão. A comissão não reduz o valor liquidado pela maquininha. Cada valor é arredondado a centavos. Despesas não passam pelo cálculo de receita.
 

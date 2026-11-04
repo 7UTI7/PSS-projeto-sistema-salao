@@ -3,7 +3,10 @@ import { Schema, model, type HydratedDocument, type Types } from 'mongoose';
 
 export type TransactionType = 'receita' | 'despesa';
 export type Professional = 'Nicolle' | 'Stefany';
-export type PaymentMethod = 'pix' | 'credito' | 'debito' | 'dinheiro';
+/** 'nao_informado' existe para as importações cuja origem não declara a forma de pagamento. */
+export type PaymentMethod = 'pix' | 'credito' | 'debito' | 'dinheiro' | 'nao_informado';
+
+export const PAYMENT_METHODS: readonly PaymentMethod[] = ['pix', 'credito', 'debito', 'dinheiro', 'nao_informado'];
 
 export interface TransactionFields {
   type: TransactionType;
@@ -22,6 +25,10 @@ export interface TransactionFields {
   settledAt?: Date;
   status: 'pendente' | 'liquidada' | 'cancelada';
   origin: 'manual' | 'booksy' | 'infinitepay';
+  /** Lote que criou o lançamento; permite desfazer uma importação inteira. */
+  importBatchId?: Types.ObjectId;
+  /** Id da linha na plataforma de origem (reserva do Booksy, transação da InfinitePay). */
+  externalId?: string;
   createdBy: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -43,11 +50,13 @@ const transactionSchema = new Schema<TransactionFields>(
     netAmount: { type: Number, required: true },
     category: { type: String, required: true, trim: true, maxlength: 100 },
     costType: { type: String, enum: ['fixo', 'variavel'] },
-    paymentMethod: { type: String, enum: ['pix', 'credito', 'debito', 'dinheiro'], required: true },
+    paymentMethod: { type: String, enum: PAYMENT_METHODS, required: true },
     occurredAt: { type: Date, required: true, index: true },
     settledAt: { type: Date },
     status: { type: String, enum: ['pendente', 'liquidada', 'cancelada'], default: 'pendente', required: true },
     origin: { type: String, enum: ['manual', 'booksy', 'infinitepay'], default: 'manual', required: true },
+    importBatchId: { type: Schema.Types.ObjectId, ref: 'ImportBatch', index: true },
+    externalId: { type: String, trim: true, maxlength: 120 },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     deletedAt: { type: Date, default: null, index: true },
   },
@@ -55,5 +64,10 @@ const transactionSchema = new Schema<TransactionFields>(
 );
 
 transactionSchema.index({ occurredAt: 1, type: 1, deletedAt: 1 });
+// Deduplicação por linha: o mesmo agendamento não entra duas vezes, mesmo em arquivos diferentes.
+transactionSchema.index(
+  { origin: 1, externalId: 1 },
+  { unique: true, partialFilterExpression: { externalId: { $type: 'string' } } },
+);
 
 export const Transaction = model<TransactionFields>('Transaction', transactionSchema);

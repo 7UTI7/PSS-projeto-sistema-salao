@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -20,16 +20,42 @@ import ChangePasswordScreen from '../screens/auth/ChangePasswordScreen';
 // Telas Main
 import DashboardScreen from '../screens/main/DashboardScreen';
 import TransactionsScreen from '../screens/main/TransactionsScreen';
-import InventoryScreen from '../screens/main/InventoryScreen';
 import ReportsScreen from '../screens/main/ReportsScreen';
+import ImportsScreen from '../screens/main/ImportsScreen';
+import InventoryScreen from '../screens/main/InventoryScreen';
 import NewTransactionScreen from '../screens/main/NewTransactionScreen';
 import SettingsScreen from '../screens/main/SettingsScreen';
+
+// Telas de Ajustes
+import TeamScreen from '../screens/settings/TeamScreen';
+import CategoriesScreen from '../screens/settings/CategoriesScreen';
 
 import { colors, typography } from '../theme/theme';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const MainTab = createBottomTabNavigator<MainTabParamList>();
+
+/** Ícone de cada aba, no par preenchido/contorno. */
+const TAB_ICONS: Record<keyof MainTabParamList, [keyof typeof Ionicons.glyphMap, keyof typeof Ionicons.glyphMap]> = {
+  Dashboard: ['apps', 'apps-outline'],
+  Transactions: ['receipt', 'receipt-outline'],
+  Reports: ['analytics', 'analytics-outline'],
+  Imports: ['cloud-upload', 'cloud-upload-outline'],
+  Inventory: ['cube', 'cube-outline'],
+};
+
+const stackHeaderOptions = {
+  headerShown: true,
+  headerTintColor: colors.primary,
+  headerStyle: { backgroundColor: colors.background },
+  headerTitleStyle: {
+    fontFamily: typography.fonts.headline,
+    fontSize: 18,
+    color: colors.graphiteText,
+  },
+  headerShadowVisible: false,
+} as const;
 
 function AuthNavigator() {
   return (
@@ -81,56 +107,33 @@ function MainNavigator() {
         tabBarInactiveTintColor: colors.graphiteMuted,
         tabBarLabelStyle: {
           fontFamily: typography.fonts.bodySemiBold,
-          fontSize: 11,
+          fontSize: 10,
           marginTop: -2,
         },
         tabBarIcon: ({ focused }) => {
-          let iconName: keyof typeof Ionicons.glyphMap = 'apps-outline';
-
-          if (route.name === 'Dashboard') {
-            iconName = focused ? 'apps' : 'apps-outline';
-          } else if (route.name === 'Transactions') {
-            iconName = focused ? 'receipt' : 'receipt-outline';
-          } else if (route.name === 'Inventory') {
-            iconName = focused ? 'cube' : 'cube-outline';
-          } else if (route.name === 'Reports') {
-            iconName = focused ? 'analytics' : 'analytics-outline';
-          }
+          const [filled, outline] = TAB_ICONS[route.name] ?? ['apps', 'apps-outline'];
 
           if (focused) {
             return (
               <View style={styles.activePill}>
-                <Ionicons name={iconName} size={19} color={colors.primary} />
+                <Ionicons name={filled} size={19} color={colors.primary} />
               </View>
             );
           }
 
-          return (
-            <Ionicons name={iconName} size={21} color={colors.graphiteMuted} />
-          );
+          return <Ionicons name={outline} size={21} color={colors.graphiteMuted} />;
         },
       })}
     >
-      <MainTab.Screen
-        name="Dashboard"
-        component={DashboardScreen}
-        options={{ title: 'Dashboard' }}
-      />
+      <MainTab.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Painel' }} />
       <MainTab.Screen
         name="Transactions"
         component={TransactionsScreen}
-        options={{ title: 'Transações' }}
+        options={{ title: 'Lançamentos' }}
       />
-      <MainTab.Screen
-        name="Inventory"
-        component={InventoryScreen}
-        options={{ title: 'Estoque' }}
-      />
-      <MainTab.Screen
-        name="Reports"
-        component={ReportsScreen}
-        options={{ title: 'Relatórios' }}
-      />
+      <MainTab.Screen name="Reports" component={ReportsScreen} options={{ title: 'Relatórios' }} />
+      <MainTab.Screen name="Imports" component={ImportsScreen} options={{ title: 'Importar' }} />
+      <MainTab.Screen name="Inventory" component={InventoryScreen} options={{ title: 'Estoque' }} />
     </MainTab.Navigator>
   );
 }
@@ -157,6 +160,7 @@ export default function AppNavigator() {
         {!isAuthenticated ? (
           <RootStack.Screen name="Auth" component={AuthNavigator} />
         ) : mustChangePassword ? (
+          // Com a troca pendente a API responde 403 em tudo, então nem vale abrir o app.
           <RootStack.Screen
             name="ChangePasswordMandatory"
             component={ChangePasswordScreen}
@@ -175,17 +179,17 @@ export default function AppNavigator() {
             <RootStack.Screen
               name="Settings"
               component={SettingsScreen}
-              options={{
-                headerShown: true,
-                title: 'Ajustes do Studio',
-                headerTintColor: colors.primary,
-                headerStyle: { backgroundColor: colors.background },
-                headerTitleStyle: {
-                  fontFamily: typography.fonts.headline,
-                  fontSize: 18,
-                  color: colors.graphiteText,
-                },
-              }}
+              options={{ ...stackHeaderOptions, title: 'Ajustes do Studio' }}
+            />
+            <RootStack.Screen
+              name="Team"
+              component={TeamScreen}
+              options={{ ...stackHeaderOptions, title: 'Equipe' }}
+            />
+            <RootStack.Screen
+              name="Categories"
+              component={CategoriesScreen}
+              options={{ ...stackHeaderOptions, title: 'Categorias' }}
             />
           </>
         )}

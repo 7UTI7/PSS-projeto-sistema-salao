@@ -1,96 +1,179 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { MainTabParamList } from '../../navigation/types';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/types';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { FloatingActionButton } from '../../components/ui/FloatingActionButton';
+import { EmptyState, ErrorState, LoadingState } from '../../components/ui/QueryState';
+import { useCashFlowReport, useDreReport, useIsAdmin } from '../../hooks/useReports';
+import { useFilteredTransactions } from '../../hooks/useTransactions';
+import { useAuthStore } from '../../store/authStore';
+import { usePeriodStore } from '../../store/periodStore';
+import { profitMargin, summarizeCashFlow, totalExpenses } from '../../services/report.service';
+import { MONTHLY_REVENUE_GOAL } from '../../config/studio.config';
+import { LOW_STOCK_ITEMS } from '../../data/inventory.mock';
+import {
+  formatCurrency,
+  formatPercent,
+  formatRelativeDateTime,
+  shareOf,
+} from '../../utils/formatters';
+import { daysLeftInPeriod, periodLabel } from '../../utils/period';
+import type { Professional, Transaction } from '../../types';
+
+const PROFESSIONALS: Professional[] = ['Nicolle', 'Stefany'];
+const RECENT_COUNT = 5;
 
 export default function DashboardScreen() {
-  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList>>();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [balanceVisible, setBalanceVisible] = useState(true);
+
+  const period = usePeriodStore((state) => state.period);
+  const userName = useAuthStore((state) => state.user?.name);
+  const isAdmin = useIsAdmin();
+
+  const dreQuery = useDreReport();
+  const cashFlowQuery = useCashFlowReport();
+  const { transactions, isPending: loadingTransactions, isError, error, refetch } =
+    useFilteredTransactions();
+
+  const cashFlow = useMemo(
+    () => summarizeCashFlow(cashFlowQuery.data ?? []),
+    [cashFlowQuery.data]
+  );
+
+  /**
+   * Divisão por profissional: o DRE não quebra por pessoa, então soma-se a base de
+   * cálculo (bruto − desconto) das receitas não canceladas do período.
+   */
+  const byProfessional = useMemo(() => {
+    const totals = new Map<Professional, number>(PROFESSIONALS.map((name) => [name, 0]));
+    for (const transaction of transactions) {
+      if (transaction.type !== 'receita' || transaction.status === 'cancelada') continue;
+      const current = totals.get(transaction.professional) ?? 0;
+      totals.set(transaction.professional, current + transaction.grossAmount - transaction.discountAmount);
+    }
+    const total = [...totals.values()].reduce((sum, value) => sum + value, 0);
+    return { totals, total };
+  }, [transactions]);
+
+  const recent = useMemo(
+    () =>
+      [...transactions]
+        .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+        .slice(0, RECENT_COUNT),
+    [transactions]
+  );
+
+  const dre = dreQuery.data;
+  const expenses = dre ? totalExpenses(dre) : 0;
+  const goalProgress = dre ? Math.min(shareOf(dre.receitaBruta, MONTHLY_REVENUE_GOAL), 1) : 0;
+  const refreshing = dreQuery.isRefetching || cashFlowQuery.isRefetching;
+
+  function handleRefresh() {
+    void refetch();
+    void dreQuery.refetch();
+    void cashFlowQuery.refetch();
+  }
+
+  if (loadingTransactions || (isAdmin && dreQuery.isPending)) {
+    return (
+      <View style={styles.screen}>
+        <StudioTopHeader subtitleTag="DASHBOARD" />
+        <LoadingState label="Carregando o painel do studio..." />
+      </View>
+    );
+  }
+
+  if (isError || (isAdmin && dreQuery.isError)) {
+    return (
+      <View style={styles.screen}>
+        <StudioTopHeader subtitleTag="DASHBOARD" />
+        <ErrorState error={error ?? dreQuery.error} onRetry={handleRefresh} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.screen}>
-      {/* Top Bar Oficial com Monograma N e período */}
-      <StudioTopHeader subtitleTag="DASHBOARD" currentPeriod="Setembro 2024" />
+      <StudioTopHeader subtitleTag="DASHBOARD" />
 
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />
+        }
       >
-        {/* TOPO: Saudação e Perfil */}
         <View style={styles.greetingSection}>
           <View style={styles.greetingTextCol}>
             <Text style={styles.atelierLabel}>ATELIER DE BELEZA</Text>
-            <Text style={styles.greetingTitle}>Olá, Nicolle</Text>
+            <Text style={styles.greetingTitle}>
+              Olá, {userName ? userName.split(' ')[0] : 'bem-vinda'}
+            </Text>
             <Text style={styles.greetingSub}>Visão consolidada do seu atelier</Text>
           </View>
 
-          <View style={styles.greetingActions}>
-            <TouchableOpacity
-              style={styles.eyeBtn}
-              activeOpacity={0.7}
-              onPress={() => setBalanceVisible(!balanceVisible)}
-            >
-              <Ionicons
-                name={balanceVisible ? 'eye-outline' : 'eye-off-outline'}
-                size={20}
-                color={colors.graphiteMuted}
-              />
-            </TouchableOpacity>
-
-            <View style={styles.avatarBorder}>
-              <View style={styles.avatarInner}>
-                <Ionicons name="sparkles" size={16} color="#FFFFFF" />
-              </View>
-              <View style={styles.onlineBadge} />
-            </View>
-          </View>
+          <TouchableOpacity
+            style={styles.eyeBtn}
+            activeOpacity={0.7}
+            onPress={() => setBalanceVisible(!balanceVisible)}
+          >
+            <Ionicons
+              name={balanceVisible ? 'eye-outline' : 'eye-off-outline'}
+              size={20}
+              color={colors.graphiteMuted}
+            />
+          </TouchableOpacity>
         </View>
 
-        {/* CARD PRINCIPAL: Saldo Atual em Caixa (Deep Violet) */}
+        {/* SALDO EM CAIXA: regime de caixa, só o que foi liquidado no período. */}
         <View style={styles.bannerCard}>
-          {/* Círculos decorativos de luz translúcida */}
           <View style={styles.glowTopRight} />
           <View style={styles.glowBottomLeft} />
 
           <View style={styles.bannerHeader}>
             <View style={styles.bannerTagRow}>
               <View style={styles.pulseDot} />
-              <Text style={styles.bannerTagText}>SALDO ATUAL EM CAIXA</Text>
+              <Text style={styles.bannerTagText}>SALDO LIQUIDADO NO PERÍODO</Text>
             </View>
             <View style={styles.consolidatedBadge}>
-              <Text style={styles.consolidatedText}>Consolidado</Text>
+              <Text style={styles.consolidatedText}>{periodLabel(period)}</Text>
             </View>
           </View>
 
           <View style={styles.balanceRow}>
             <Text style={styles.balanceCurrency}>R$</Text>
             <Text style={styles.balanceNumber}>
-              {balanceVisible ? '2.980,50' : '••••••••'}
+              {balanceVisible
+                ? formatCurrency(cashFlow.balance).replace('R$', '').trim()
+                : '••••••••'}
             </Text>
           </View>
 
           <View style={styles.bannerFooter}>
             <View style={styles.growthBadge}>
               <Ionicons name="trending-up" size={15} color={colors.lavenderSubtle} />
-              <Text style={styles.growthText}>+12,4% este mês</Text>
+              <Text style={styles.growthText}>
+                {cashFlow.days} {cashFlow.days === 1 ? 'dia com movimento' : 'dias com movimento'}
+              </Text>
             </View>
 
             <TouchableOpacity
               style={styles.statementLink}
               activeOpacity={0.8}
-              onPress={() => navigation.navigate('Transactions')}
+              onPress={() => navigation.navigate('Main', { screen: 'Transactions' })}
             >
               <Text style={styles.statementText}>Extrato detalhado</Text>
               <Ionicons name="arrow-forward" size={14} color={colors.lavenderTint} />
@@ -98,94 +181,89 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* CARDS DE RESUMO FINANCEIRO (Grid 2x2) */}
+        {/* KPIs do DRE. Sem eles (colaboradora), mostra o aviso de área restrita. */}
         <View style={styles.sectionHeadingRow}>
           <Text style={styles.sectionHeading}>DESEMPENHO MENSAL</Text>
-          <Text style={styles.sectionHeadingRight}>Setembro 2024</Text>
+          <Text style={styles.sectionHeadingRight}>{periodLabel(period)}</Text>
         </View>
 
-        <View style={styles.grid2x2}>
-          {/* Faturamento */}
-          <View style={styles.kpiCard}>
-            <View style={styles.kpiTopRow}>
-              <Text style={styles.kpiLabel}>Faturamento</Text>
-              <View style={[styles.kpiIconCircle, { backgroundColor: colors.lavenderTint }]}>
-                <Ionicons name="wallet-outline" size={16} color={colors.violetRoyal} />
-              </View>
-            </View>
-            <Text style={styles.kpiValue}>R$ 1.495,00</Text>
-            <Text style={[styles.kpiSub, { color: colors.violetRoyal, fontWeight: '700' }]}>
-              +18% vs ago
+        {!isAdmin ? (
+          <View style={styles.restrictedCard}>
+            <Ionicons name="lock-closed-outline" size={18} color={colors.primary} />
+            <Text style={styles.restrictedText}>
+              O resumo financeiro do studio é visível apenas para a administradora.
             </Text>
           </View>
+        ) : dre ? (
+          <>
+            <View style={styles.grid2x2}>
+              <KpiCard
+                label="Faturamento bruto"
+                value={formatCurrency(dre.receitaBruta)}
+                hint={`Descontos: ${formatCurrency(dre.descontos)}`}
+                icon="wallet-outline"
+                iconColor={colors.violetRoyal}
+                iconBackground={colors.lavenderTint}
+              />
+              <KpiCard
+                label="Receita líquida"
+                value={formatCurrency(dre.receitaLiquida)}
+                hint={`Taxas: ${formatCurrency(dre.taxas)}`}
+                icon="calculator-outline"
+                iconColor={colors.tertiary}
+                iconBackground={colors.lavenderTint}
+              />
+              <KpiCard
+                label="Despesas"
+                value={formatCurrency(expenses)}
+                hint={`Fixas: ${formatCurrency(dre.despesasFixas)}`}
+                icon="bag-outline"
+                iconColor={colors.statusError}
+                iconBackground={colors.statusErrorBg}
+                valueColor={colors.statusError}
+              />
+              <KpiCard
+                label="Resultado"
+                value={formatCurrency(dre.resultado)}
+                hint={`Margem: ${formatPercent(profitMargin(dre), 1)}`}
+                icon="cash-outline"
+                iconColor={dre.resultado >= 0 ? colors.statusSuccess : colors.statusError}
+                iconBackground={dre.resultado >= 0 ? colors.statusSuccessBg : colors.statusErrorBg}
+                valueColor={dre.resultado >= 0 ? colors.statusSuccess : colors.statusError}
+              />
+            </View>
 
-          {/* Receita Líquida */}
-          <View style={styles.kpiCard}>
-            <View style={styles.kpiTopRow}>
-              <Text style={styles.kpiLabel}>Receita Líquida</Text>
-              <View style={[styles.kpiIconCircle, { backgroundColor: colors.lavenderTint }]}>
-                <Ionicons name="calculator-outline" size={16} color={colors.tertiary} />
+            {/* META MENSAL: valor local (studio.config.ts), a API não tem cadastro de metas. */}
+            <View style={styles.metaCard}>
+              <View style={styles.metaTop}>
+                <View style={styles.metaLeft}>
+                  <View style={[styles.kpiIconCircle, { backgroundColor: colors.lavenderTint }]}>
+                    <Ionicons name="flag-outline" size={16} color={colors.violetRoyal} />
+                  </View>
+                  <View>
+                    <Text style={styles.metaLabel}>META MENSAL</Text>
+                    <Text style={styles.metaTarget}>{formatCurrency(MONTHLY_REVENUE_GOAL)}</Text>
+                  </View>
+                </View>
+                <View style={styles.metaRight}>
+                  <Text style={styles.metaPercent}>{formatPercent(goalProgress, 0)} atingido</Text>
+                  <Text style={styles.metaDays}>{daysLeftInPeriod(period)} dias restantes</Text>
+                </View>
+              </View>
+
+              <View style={styles.trackBar}>
+                <View style={[styles.fillBar, { width: `${goalProgress * 100}%` }]} />
+              </View>
+
+              <View style={styles.metaBottom}>
+                <Text style={styles.metaSubText}>{formatCurrency(dre.receitaBruta)} faturado</Text>
+                <Text style={styles.metaSubText}>
+                  Falta: {formatCurrency(Math.max(MONTHLY_REVENUE_GOAL - dre.receitaBruta, 0))}
+                </Text>
               </View>
             </View>
-            <Text style={styles.kpiValue}>R$ 1.345,00</Text>
-            <Text style={styles.kpiSub}>Margem: 90%</Text>
-          </View>
-
-          {/* Despesas */}
-          <View style={styles.kpiCard}>
-            <View style={styles.kpiTopRow}>
-              <Text style={styles.kpiLabel}>Despesas</Text>
-              <View style={[styles.kpiIconCircle, { backgroundColor: colors.statusErrorBg }]}>
-                <Ionicons name="bag-outline" size={16} color={colors.statusError} />
-              </View>
-            </View>
-            <Text style={[styles.kpiValue, { color: colors.statusError }]}>R$ 858,18</Text>
-            <Text style={styles.kpiSub}>Controlado</Text>
-          </View>
-
-          {/* Lucro Estimado */}
-          <View style={styles.kpiCard}>
-            <View style={styles.kpiTopRow}>
-              <Text style={styles.kpiLabel}>Lucro Estimado</Text>
-              <View style={[styles.kpiIconCircle, { backgroundColor: colors.statusSuccessBg }]}>
-                <Ionicons name="cash-outline" size={16} color={colors.statusSuccess} />
-              </View>
-            </View>
-            <Text style={[styles.kpiValue, { color: colors.statusSuccess }]}>R$ 486,82</Text>
-            <Text style={[styles.kpiSub, { color: colors.statusSuccess, fontWeight: '700' }]}>
-              32,5% líquido
-            </Text>
-          </View>
-        </View>
-
-        {/* META MENSAL */}
-        <View style={styles.metaCard}>
-          <View style={styles.metaTop}>
-            <View style={styles.metaLeft}>
-              <View style={[styles.kpiIconCircle, { backgroundColor: colors.lavenderTint }]}>
-                <Ionicons name="flag-outline" size={16} color={colors.violetRoyal} />
-              </View>
-              <View>
-                <Text style={styles.metaLabel}>META MENSAL</Text>
-                <Text style={styles.metaTarget}>R$ 5.000,00</Text>
-              </View>
-            </View>
-            <View style={styles.metaRight}>
-              <Text style={styles.metaPercent}>30% atingido</Text>
-              <Text style={styles.metaDays}>14 dias restantes</Text>
-            </View>
-          </View>
-
-          {/* Barra Roxa com Gradiente */}
-          <View style={styles.trackBar}>
-            <View style={[styles.fillBar, { width: '30%' }]} />
-          </View>
-
-          <View style={styles.metaBottom}>
-            <Text style={styles.metaSubText}>R$ 1.495,00 faturado</Text>
-            <Text style={styles.metaSubText}>Falta: R$ 3.505,00</Text>
-          </View>
-        </View>
+          </>
+        ) : null}
 
         {/* DIVISÃO DE RECEITAS POR PROFISSIONAL */}
         <View style={styles.breakdownCard}>
@@ -199,69 +277,86 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          <View style={styles.chartContainer}>
-            {/* Donut representation */}
-            <View style={styles.donutCircle}>
-              <View style={styles.donutArcPrimary} />
-              <View style={styles.donutArcSecondary} />
-              <View style={styles.donutCenter}>
-                <Text style={styles.donutSmall}>TOTAL</Text>
-                <Text style={styles.donutBig}>100%</Text>
-              </View>
-            </View>
-
-            <View style={styles.legendCol}>
-              <View style={styles.legendRow}>
-                <View style={styles.legendItemLeft}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.violetRoyal }]} />
-                  <View>
-                    <Text style={styles.legendName}>Nicolle</Text>
-                    <Text style={styles.legendShare}>68% do total</Text>
-                  </View>
-                </View>
-                <Text style={styles.legendAmount}>R$ 1.016,60</Text>
-              </View>
-
-              <View style={styles.legendRow}>
-                <View style={styles.legendItemLeft}>
-                  <View style={[styles.legendDot, { backgroundColor: colors.lavenderAccent }]} />
-                  <View>
-                    <Text style={styles.legendName}>Stephany</Text>
-                    <Text style={styles.legendShare}>32% do total</Text>
-                  </View>
-                </View>
-                <Text style={styles.legendAmount}>R$ 478,40</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* ALERTA DE REPOSIÇÃO */}
-        <View style={styles.alertCard}>
-          <View style={styles.alertIconBox}>
-            <Ionicons name="warning-outline" size={20} color={colors.statusWarning} />
-          </View>
-          <View style={styles.alertCol}>
-            <View style={styles.alertHeader}>
-              <Text style={styles.alertTitle}>Alerta de Reposição</Text>
-              <View style={styles.alertBadge}>
-                <Text style={styles.alertBadgeText}>2 ITENS</Text>
-              </View>
-            </View>
-            <Text style={styles.alertDesc}>
-              Estoque Baixo: <Text style={styles.boldText}>Cola de Cílios</Text> e{' '}
-              <Text style={styles.boldText}>Luvas descartáveis</Text>.
+          {byProfessional.total === 0 ? (
+            <Text style={styles.breakdownEmpty}>
+              Nenhuma receita registrada em {periodLabel(period)}.
             </Text>
-            <TouchableOpacity
-              style={styles.alertAction}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('Inventory')}
-            >
-              <Text style={styles.alertLink}>Ver Estoque</Text>
-              <Ionicons name="arrow-forward" size={14} color={colors.violetRoyal} />
-            </TouchableOpacity>
-          </View>
+          ) : (
+            <View style={styles.legendCol}>
+              {PROFESSIONALS.map((name, index) => {
+                const amount = byProfessional.totals.get(name) ?? 0;
+                const share = shareOf(amount, byProfessional.total);
+                return (
+                  <View key={name} style={styles.legendBlock}>
+                    <View style={styles.legendRow}>
+                      <View style={styles.legendItemLeft}>
+                        <View
+                          style={[
+                            styles.legendDot,
+                            { backgroundColor: index === 0 ? colors.violetRoyal : colors.lavenderAccent },
+                          ]}
+                        />
+                        <View>
+                          <Text style={styles.legendName}>{name}</Text>
+                          <Text style={styles.legendShare}>
+                            {formatPercent(share, 0)} do total
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.legendAmount}>{formatCurrency(amount)}</Text>
+                    </View>
+
+                    {/* Barra em vez de donut: mais legível e sem dependência de gráfico. */}
+                    <View style={styles.shareTrack}>
+                      <View
+                        style={[
+                          styles.shareFill,
+                          {
+                            width: `${share * 100}%`,
+                            backgroundColor:
+                              index === 0 ? colors.violetRoyal : colors.lavenderAccent,
+                          },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
         </View>
+
+        {/* ALERTA DE REPOSIÇÃO: dados locais — não há módulo de estoque na API. */}
+        {LOW_STOCK_ITEMS.length > 0 ? (
+          <View style={styles.alertCard}>
+            <View style={styles.alertIconBox}>
+              <Ionicons name="warning-outline" size={20} color={colors.statusWarning} />
+            </View>
+            <View style={styles.alertCol}>
+              <View style={styles.alertHeader}>
+                <Text style={styles.alertTitle}>Alerta de Reposição</Text>
+                <View style={styles.alertBadge}>
+                  <Text style={styles.alertBadgeText}>{LOW_STOCK_ITEMS.length} ITENS</Text>
+                </View>
+              </View>
+              <Text style={styles.alertDesc}>
+                Estoque baixo:{' '}
+                <Text style={styles.boldText}>
+                  {LOW_STOCK_ITEMS.map((item) => item.name).join(', ')}
+                </Text>
+                .
+              </Text>
+              <TouchableOpacity
+                style={styles.alertAction}
+                activeOpacity={0.7}
+                onPress={() => navigation.navigate('Main', { screen: 'Inventory' })}
+              >
+                <Text style={styles.alertLink}>Ver Estoque</Text>
+                <Ionicons name="arrow-forward" size={14} color={colors.violetRoyal} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : null}
 
         {/* LANÇAMENTOS RECENTES */}
         <View style={styles.recentSection}>
@@ -273,87 +368,105 @@ export default function DashboardScreen() {
             <TouchableOpacity
               style={styles.viewAllRow}
               activeOpacity={0.7}
-              onPress={() => navigation.navigate('Transactions')}
+              onPress={() => navigation.navigate('Main', { screen: 'Transactions' })}
             >
               <Text style={styles.viewAllText}>Ver todos</Text>
               <Ionicons name="chevron-forward" size={14} color={colors.violetRoyal} />
             </TouchableOpacity>
           </View>
 
-          {/* Item 1 */}
-          <View style={styles.transactionItem}>
-            <View style={styles.txLeft}>
-              <View style={styles.txIconCircle}>
-                <Ionicons name="brush-outline" size={18} color={colors.violetRoyal} />
-              </View>
-              <View>
-                <Text style={styles.txTitle}>Efeito Wispy</Text>
-                <View style={styles.txMetaRow}>
-                  <Text style={styles.txCategory}>Cílios por Nicolle</Text>
-                  <Text style={styles.txDot}>•</Text>
-                  <View style={styles.paymentPill}>
-                    <Text style={styles.paymentText}>Cartão</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-            <View style={styles.txRight}>
-              <Text style={styles.incomeText}>+R$ 180,00</Text>
-              <Text style={styles.txTime}>15:40</Text>
-            </View>
-          </View>
-
-          {/* Item 2 */}
-          <View style={styles.transactionItem}>
-            <View style={styles.txLeft}>
-              <View style={styles.txIconCircle}>
-                <Ionicons name="flower-outline" size={18} color={colors.violetRoyal} />
-              </View>
-              <View>
-                <Text style={styles.txTitle}>Unhas Fibra de Vidro</Text>
-                <View style={styles.txMetaRow}>
-                  <Text style={styles.txCategory}>Stephany</Text>
-                  <Text style={styles.txDot}>•</Text>
-                  <View style={styles.paymentPill}>
-                    <Text style={styles.paymentText}>Pix</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-            <View style={styles.txRight}>
-              <Text style={styles.incomeText}>+R$ 30,00</Text>
-              <Text style={styles.txTime}>14:15</Text>
-            </View>
-          </View>
-
-          {/* Item 3 */}
-          <View style={styles.transactionItem}>
-            <View style={styles.txLeft}>
-              <View style={[styles.txIconCircle, { backgroundColor: colors.statusErrorBg }]}>
-                <Ionicons name="bag-handle-outline" size={18} color={colors.statusError} />
-              </View>
-              <View>
-                <Text style={styles.txTitle}>Compra descartáveis</Text>
-                <View style={styles.txMetaRow}>
-                  <Text style={styles.txCategory}>Fornecedor Local</Text>
-                  <Text style={styles.txDot}>•</Text>
-                  <View style={[styles.paymentPill, { backgroundColor: colors.statusErrorBg }]}>
-                    <Text style={[styles.paymentText, { color: colors.statusError }]}>Débito</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-            <View style={styles.txRight}>
-              <Text style={styles.expenseText}>-R$ 34,50</Text>
-              <Text style={styles.txTime}>11:20</Text>
-            </View>
-          </View>
+          {recent.length === 0 ? (
+            <EmptyState
+              icon="receipt-outline"
+              title="Nada lançado neste mês"
+              description="Use o botão Novo Lançamento ou importe o relatório do Booksy."
+              style={styles.recentEmpty}
+            />
+          ) : (
+            recent.map((transaction) => (
+              <RecentItem
+                key={transaction._id}
+                transaction={transaction}
+                onPress={() =>
+                  navigation.navigate('NewTransaction', { transactionId: transaction._id })
+                }
+              />
+            ))
+          )}
         </View>
       </ScrollView>
 
-      {/* Floating Action Button (+ Novo Lançamento) */}
       <FloatingActionButton />
     </View>
+  );
+}
+
+interface KpiCardProps {
+  label: string;
+  value: string;
+  hint: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+  iconBackground: string;
+  valueColor?: string;
+}
+
+function KpiCard({ label, value, hint, icon, iconColor, iconBackground, valueColor }: KpiCardProps) {
+  return (
+    <View style={styles.kpiCard}>
+      <View style={styles.kpiTopRow}>
+        <Text style={styles.kpiLabel}>{label}</Text>
+        <View style={[styles.kpiIconCircle, { backgroundColor: iconBackground }]}>
+          <Ionicons name={icon} size={16} color={iconColor} />
+        </View>
+      </View>
+      <Text style={[styles.kpiValue, valueColor ? { color: valueColor } : null]}>{value}</Text>
+      <Text style={styles.kpiSub}>{hint}</Text>
+    </View>
+  );
+}
+
+function RecentItem({
+  transaction,
+  onPress,
+}: {
+  transaction: Transaction;
+  onPress: () => void;
+}) {
+  const isIncome = transaction.type === 'receita';
+  const amount = isIncome
+    ? transaction.grossAmount - transaction.discountAmount
+    : transaction.grossAmount;
+
+  return (
+    <TouchableOpacity style={styles.transactionItem} activeOpacity={0.8} onPress={onPress}>
+      <View style={styles.txLeft}>
+        <View style={styles.txIconCircle}>
+          <Ionicons
+            name={isIncome ? 'sparkles-outline' : 'bag-outline'}
+            size={18}
+            color={colors.violetRoyal}
+          />
+        </View>
+        <View style={styles.txTextCol}>
+          <Text style={styles.txTitle} numberOfLines={1}>
+            {transaction.description}
+          </Text>
+          <View style={styles.txMetaRow}>
+            <Text style={styles.txCategory} numberOfLines={1}>
+              {transaction.category} • {transaction.professional}
+            </Text>
+          </View>
+        </View>
+      </View>
+      <View style={styles.txRight}>
+        <Text style={isIncome ? styles.incomeText : styles.expenseText}>
+          {isIncome ? '+' : '−'}
+          {formatCurrency(amount)}
+        </Text>
+        <Text style={styles.txTime}>{formatRelativeDateTime(transaction.occurredAt)}</Text>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -367,27 +480,25 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
-    paddingBottom: 100,
+    paddingBottom: 110,
   },
   greetingSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 16,
-    paddingTop: 4,
   },
   greetingTextCol: {
     flex: 1,
   },
   atelierLabel: {
     fontFamily: typography.fonts.bodyBold,
-    fontSize: 10,
+    fontSize: 9,
+    letterSpacing: 1.6,
     color: colors.violetRoyal,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
   },
   greetingTitle: {
-    fontFamily: typography.fonts.headline,
+    fontFamily: typography.fonts.headlineBold,
     fontSize: 26,
     color: colors.graphiteText,
     marginTop: 2,
@@ -396,11 +507,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.body,
     fontSize: 12,
     color: colors.graphiteMuted,
-  },
-  greetingActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    marginTop: 2,
   },
   eyeBtn: {
     width: 38,
@@ -412,35 +519,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  avatarBorder: {
-    position: 'relative',
-    width: 42,
-    height: 42,
-    borderRadius: borderRadius.full,
-    padding: 2,
-    backgroundColor: colors.violetRoyal,
-  },
-  avatarInner: {
-    flex: 1,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  onlineBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.violetRoyal,
-    borderWidth: 2,
-    borderColor: colors.surface,
-  },
   bannerCard: {
-    position: 'relative',
-    backgroundColor: colors.primary,
+    backgroundColor: colors.violetDeep,
     borderRadius: borderRadius.xl,
     padding: 20,
     overflow: 'hidden',
@@ -450,94 +530,87 @@ const styles = StyleSheet.create({
   glowTopRight: {
     position: 'absolute',
     top: -40,
-    right: -40,
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    backgroundColor: 'rgba(196, 181, 253, 0.25)',
+    right: -30,
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: 'rgba(196, 181, 253, 0.18)',
   },
   glowBottomLeft: {
     position: 'absolute',
-    bottom: -30,
+    bottom: -50,
     left: -30,
     width: 120,
     height: 120,
     borderRadius: 60,
-    backgroundColor: 'rgba(109, 40, 217, 0.35)',
+    backgroundColor: 'rgba(124, 58, 237, 0.25)',
   },
   bannerHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
   },
   bannerTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flex: 1,
   },
   pulseDot: {
     width: 7,
     height: 7,
     borderRadius: 3.5,
-    backgroundColor: colors.lavenderSubtle,
+    backgroundColor: colors.lavenderAccent,
   },
   bannerTagText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 10,
-    color: colors.lavenderSubtle,
+    fontFamily: typography.fonts.bodyBold,
+    fontSize: 9,
     letterSpacing: 1,
-    textTransform: 'uppercase',
+    color: colors.lavenderSubtle,
   },
   consolidatedBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    paddingHorizontal: 9,
+    paddingVertical: 3,
     borderRadius: borderRadius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   consolidatedText: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 10,
+    fontFamily: typography.fonts.bodySemiBold,
+    fontSize: 9,
     color: '#FFFFFF',
   },
   balanceRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 4,
-    marginVertical: 4,
+    alignItems: 'flex-end',
+    gap: 6,
+    marginTop: 14,
   },
   balanceCurrency: {
     fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 18,
+    fontSize: 16,
     color: colors.lavenderSubtle,
+    marginBottom: 5,
   },
   balanceNumber: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 32,
+    fontFamily: typography.fonts.headlineBold,
+    fontSize: 34,
     color: '#FFFFFF',
-    letterSpacing: -0.5,
   },
   bannerFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 16,
   },
   growthBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: borderRadius.full,
   },
   growthText: {
     fontFamily: typography.fonts.bodySemiBold,
     fontSize: 11,
-    color: '#FFFFFF',
+    color: colors.lavenderSubtle,
   },
   statementLink: {
     flexDirection: 'row',
@@ -545,7 +618,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   statementText: {
-    fontFamily: typography.fonts.bodyMedium,
+    fontFamily: typography.fonts.bodySemiBold,
     fontSize: 11,
     color: colors.lavenderTint,
   },
@@ -553,19 +626,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   sectionHeading: {
     fontFamily: typography.fonts.bodyBold,
-    fontSize: 11,
+    fontSize: 10,
+    letterSpacing: 1.2,
     color: colors.graphiteMuted,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
   },
   sectionHeadingRight: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 11,
-    color: colors.violetRoyal,
+    fontFamily: typography.fonts.bodyMedium,
+    fontSize: 10,
+    color: colors.graphiteMuted,
+  },
+  restrictedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.lavenderTint,
+    borderWidth: 1,
+    borderColor: colors.lavenderSubtle,
+    borderRadius: borderRadius.lg,
+    padding: 14,
+    marginBottom: 20,
+  },
+  restrictedText: {
+    flex: 1,
+    fontFamily: typography.fonts.body,
+    fontSize: 12,
+    color: colors.primary,
+    lineHeight: 17,
   },
   grid2x2: {
     flexDirection: 'row',
@@ -574,72 +664,74 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   kpiCard: {
-    width: '48.5%',
+    flexGrow: 1,
+    flexBasis: '47%',
     backgroundColor: '#FFFFFF',
     borderRadius: borderRadius.lg,
-    padding: 14,
     borderWidth: 1,
     borderColor: colors.borderWhisper,
+    padding: 13,
     ...shadows.card,
   },
   kpiTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 8,
   },
   kpiLabel: {
+    flex: 1,
     fontFamily: typography.fonts.bodyMedium,
-    fontSize: 12,
+    fontSize: 11,
     color: colors.graphiteMuted,
+    marginRight: 6,
   },
   kpiIconCircle: {
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: borderRadius.full,
     justifyContent: 'center',
     alignItems: 'center',
   },
   kpiValue: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 16,
+    fontFamily: typography.fonts.headlineBold,
+    fontSize: 17,
     color: colors.graphiteText,
-    marginBottom: 2,
   },
   kpiSub: {
     fontFamily: typography.fonts.body,
-    fontSize: 11,
+    fontSize: 10,
     color: colors.graphiteMuted,
+    marginTop: 3,
   },
   metaCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: borderRadius.lg,
-    padding: 16,
     borderWidth: 1,
     borderColor: colors.borderWhisper,
-    marginBottom: 16,
+    padding: 14,
+    marginBottom: 20,
     ...shadows.card,
   },
   metaTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
   },
   metaLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   metaLabel: {
     fontFamily: typography.fonts.bodyBold,
-    fontSize: 10,
+    fontSize: 9,
+    letterSpacing: 1,
     color: colors.graphiteMuted,
-    letterSpacing: 0.8,
   },
   metaTarget: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 16,
+    fontFamily: typography.fonts.bodyBold,
+    fontSize: 15,
     color: colors.graphiteText,
   },
   metaRight: {
@@ -647,118 +739,73 @@ const styles = StyleSheet.create({
   },
   metaPercent: {
     fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
+    fontSize: 12,
     color: colors.violetRoyal,
   },
   metaDays: {
     fontFamily: typography.fonts.body,
-    fontSize: 11,
+    fontSize: 10,
     color: colors.graphiteMuted,
   },
   trackBar: {
     height: 8,
-    backgroundColor: colors.lavenderTint,
-    borderRadius: borderRadius.full,
+    borderRadius: 4,
+    backgroundColor: colors.surfaceContainer,
+    marginTop: 12,
     overflow: 'hidden',
-    marginVertical: 4,
   },
   fillBar: {
     height: '100%',
+    borderRadius: 4,
     backgroundColor: colors.violetRoyal,
-    borderRadius: borderRadius.full,
   },
   metaBottom: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginTop: 8,
   },
   metaSubText: {
     fontFamily: typography.fonts.body,
-    fontSize: 11,
+    fontSize: 10,
     color: colors.graphiteMuted,
   },
   breakdownCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: borderRadius.lg,
-    padding: 16,
     borderWidth: 1,
     borderColor: colors.borderWhisper,
-    marginBottom: 16,
+    padding: 14,
+    marginBottom: 20,
     ...shadows.card,
   },
   breakdownTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 14,
   },
   atelierTag: {
     fontFamily: typography.fonts.bodyBold,
-    fontSize: 10,
-    color: colors.violetRoyal,
+    fontSize: 9,
     letterSpacing: 1.2,
+    color: colors.violetRoyal,
   },
   breakdownTitle: {
-    fontFamily: typography.fonts.headlineBold,
+    fontFamily: typography.fonts.headline,
     fontSize: 16,
     color: colors.graphiteText,
     marginTop: 2,
   },
-  chartContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  donutCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    borderWidth: 8,
-    borderColor: colors.violetRoyal,
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  donutArcPrimary: {
-    position: 'absolute',
-    top: -8,
-    left: -8,
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    borderWidth: 8,
-    borderColor: colors.violetRoyal,
-    borderTopColor: 'transparent',
-    borderLeftColor: 'transparent',
-  },
-  donutArcSecondary: {
-    position: 'absolute',
-    top: -8,
-    left: -8,
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    borderWidth: 8,
-    borderColor: colors.lavenderAccent,
-    borderBottomColor: 'transparent',
-    borderRightColor: 'transparent',
-  },
-  donutCenter: {
-    alignItems: 'center',
-  },
-  donutSmall: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 8,
+  breakdownEmpty: {
+    fontFamily: typography.fonts.body,
+    fontSize: 12,
     color: colors.graphiteMuted,
   },
-  donutBig: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
   legendCol: {
-    flex: 1,
-    gap: 10,
+    gap: 14,
+  },
+  legendBlock: {
+    gap: 7,
   },
   legendRow: {
     flexDirection: 'row',
@@ -768,7 +815,7 @@ const styles = StyleSheet.create({
   legendItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 9,
   },
   legendDot: {
     width: 10,
@@ -782,7 +829,7 @@ const styles = StyleSheet.create({
   },
   legendShare: {
     fontFamily: typography.fonts.body,
-    fontSize: 11,
+    fontSize: 10,
     color: colors.graphiteMuted,
   },
   legendAmount: {
@@ -790,23 +837,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.graphiteText,
   },
+  shareTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.surfaceContainer,
+    overflow: 'hidden',
+  },
+  shareFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
   alertCard: {
-    backgroundColor: '#FFFDF9',
-    borderRadius: borderRadius.lg,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.statusWarningBg,
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
+    gap: 12,
+    backgroundColor: colors.statusWarningBg,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: 14,
     marginBottom: 20,
-    ...shadows.card,
   },
   alertIconBox: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.statusWarningBg,
+    width: 38,
+    height: 38,
+    borderRadius: borderRadius.md,
+    backgroundColor: 'rgba(180, 83, 9, 0.12)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -817,63 +872,67 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
   },
   alertTitle: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 14,
-    color: '#78350F',
+    fontFamily: typography.fonts.bodyBold,
+    fontSize: 13,
+    color: colors.statusWarning,
   },
   alertBadge: {
-    backgroundColor: colors.statusWarningBg,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: borderRadius.full,
+    backgroundColor: 'rgba(180, 83, 9, 0.14)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: borderRadius.xs,
   },
   alertBadgeText: {
     fontFamily: typography.fonts.bodyBold,
-    fontSize: 9,
+    fontSize: 8,
     color: colors.statusWarning,
+    letterSpacing: 0.5,
   },
   alertDesc: {
     fontFamily: typography.fonts.body,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-    lineHeight: 17,
+    fontSize: 11,
+    color: colors.graphiteText,
+    marginTop: 4,
+    lineHeight: 16,
   },
   boldText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    color: colors.graphiteText,
+    fontFamily: typography.fonts.bodyBold,
   },
   alertAction: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    marginTop: 6,
+    gap: 4,
+    marginTop: 8,
   },
   alertLink: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 12,
+    fontFamily: typography.fonts.bodySemiBold,
+    fontSize: 11,
     color: colors.violetRoyal,
   },
   recentSection: {
-    marginBottom: 10,
+    marginBottom: 8,
   },
   recentHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 12,
   },
   recentTitle: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 18,
+    fontFamily: typography.fonts.headline,
+    fontSize: 16,
     color: colors.graphiteText,
   },
   recentSub: {
     fontFamily: typography.fonts.body,
     fontSize: 11,
     color: colors.graphiteMuted,
+    marginTop: 2,
+  },
+  recentEmpty: {
+    paddingVertical: 28,
   },
   viewAllRow: {
     flexDirection: 'row',
@@ -882,76 +941,64 @@ const styles = StyleSheet.create({
   },
   viewAllText: {
     fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 12,
+    fontSize: 11,
     color: colors.violetRoyal,
   },
   transactionItem: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.borderWhisper,
+    padding: 12,
     marginBottom: 8,
-    ...shadows.card,
   },
   txLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    flex: 1,
+    marginRight: 10,
+  },
+  txTextCol: {
+    flex: 1,
   },
   txIconCircle: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: borderRadius.full,
     backgroundColor: colors.lavenderTint,
     justifyContent: 'center',
     alignItems: 'center',
   },
   txTitle: {
     fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 14,
+    fontSize: 13,
     color: colors.graphiteText,
   },
   txMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
     marginTop: 2,
   },
   txCategory: {
     fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-  },
-  txDot: {
-    color: colors.borderWhisper,
     fontSize: 10,
-  },
-  paymentPill: {
-    backgroundColor: colors.lavenderTint,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: borderRadius.xs,
-  },
-  paymentText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 9,
-    color: colors.violetDeep,
+    color: colors.graphiteMuted,
   },
   txRight: {
     alignItems: 'flex-end',
   },
   incomeText: {
     fontFamily: typography.fonts.bodyBold,
-    fontSize: 14,
+    fontSize: 13,
     color: colors.violetRoyal,
   },
   expenseText: {
     fontFamily: typography.fonts.bodyBold,
-    fontSize: 14,
+    fontSize: 13,
     color: colors.statusError,
   },
   txTime: {

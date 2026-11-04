@@ -8,14 +8,22 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
-import { colors, typography, borderRadius, shadows } from '../../theme/theme';
+import { DEFAULT_API_URL } from '../../services/api';
+import { DEFAULT_COMMISSION_RATE, MONTHLY_REVENUE_GOAL } from '../../config/studio.config';
+import { formatCurrency, formatPercent } from '../../utils/formatters';
+import { colors, typography } from '../../theme/theme';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 
 export default function SettingsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { user, logout } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
 
   function handleLogout() {
     Alert.alert('Sair da Conta', 'Deseja realmente encerrar sua sessão?', [
@@ -24,8 +32,12 @@ export default function SettingsScreen() {
     ]);
   }
 
-  function handleFeatureInfo(title: string) {
-    Alert.alert(title, 'Configuração disponível na versão final do sistema.');
+  /**
+   * Taxas e comissão ainda não tem cadastro na API: os valores sugeridos vivem em
+   * src/config/studio.config.ts, e cada lançamento pode sobrescrevê-los na hora.
+   */
+  function handleLocalSetting(title: string, body: string) {
+    Alert.alert(title, body);
   }
 
   return (
@@ -43,15 +55,15 @@ export default function SettingsScreen() {
       <Card style={styles.profileCard}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
-            {user?.name ? user.name.slice(0, 2).toUpperCase() : 'NN'}
+            {user?.name ? user.name.slice(0, 2).toUpperCase() : '--'}
           </Text>
         </View>
 
-        <Text style={styles.userName}>{user?.name || 'Nicolle Neris'}</Text>
-        <Text style={styles.userEmail}>{user?.email || 'contato@nicolle.com'}</Text>
+        <Text style={styles.userName}>{user?.name ?? '-'}</Text>
+        <Text style={styles.userEmail}>{user?.email ?? '-'}</Text>
 
         <Badge
-          label={user?.role === 'admin' ? 'ADMINISTRADORA DO STUDIO' : 'COLABORADORA'}
+          label={isAdmin ? 'ADMINISTRADORA DO STUDIO' : 'COLABORADORA'}
           variant="secondary"
           style={styles.roleBadge}
         />
@@ -63,50 +75,84 @@ export default function SettingsScreen() {
       </View>
 
       <Card style={styles.menuCard}>
+        {isAdmin ? (
+          <>
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => navigation.navigate('Categories')}
+            >
+              <View style={styles.menuIconBox}>
+                <Ionicons name="pricetags-outline" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuLabel}>Catálogo de Categorias</Text>
+                <Text style={styles.menuSub}>O que pode ser lançado como receita e despesa</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.graphiteMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Team')}>
+              <View style={styles.menuIconBox}>
+                <Ionicons name="people-outline" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.menuContent}>
+                <Text style={styles.menuLabel}>Equipe & Especialistas</Text>
+                <Text style={styles.menuSub}>Cadastrar colaboradoras e permissões</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={colors.graphiteMuted} />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+          </>
+        ) : null}
+
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => handleFeatureInfo('Taxas de Maquininha')}
+          onPress={() =>
+            handleLocalSetting(
+              'Taxas de Maquininha',
+              'As taxas sugeridas por forma de pagamento ficam em src/config/studio.config.ts. '
+                + 'Em cada lançamento de receita você confirma ou ajusta a taxa, e o servidor '
+                + 'recalcula os valores. Um cadastro de taxas na API ainda não existe.'
+            )
+          }
         >
           <View style={styles.menuIconBox}>
             <Ionicons name="card-outline" size={20} color={colors.primary} />
           </View>
           <View style={styles.menuContent}>
             <Text style={styles.menuLabel}>Taxas de Maquininhas & Cartão</Text>
-            <Text style={styles.menuSub}>Débito, crédito à vista e parcelado</Text>
+            <Text style={styles.menuSub}>Sugestões locais · ajustáveis por lançamento</Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.graphiteMuted} />
+          <Ionicons name="information-circle-outline" size={18} color={colors.graphiteMuted} />
         </TouchableOpacity>
 
         <View style={styles.menuDivider} />
 
         <TouchableOpacity
           style={styles.menuItem}
-          onPress={() => handleFeatureInfo('Regras de Comissão')}
+          onPress={() =>
+            handleLocalSetting(
+              'Regras de Comissionamento',
+              `A comissão padrão é de ${formatPercent(DEFAULT_COMMISSION_RATE, 0)} e a meta mensal `
+                + `é de ${formatCurrency(MONTHLY_REVENUE_GOAL)}. Os dois valores ficam em `
+                + 'src/config/studio.config.ts. Comissão por serviço e meta cadastrável '
+                + 'dependem de um módulo que a API ainda não tem.'
+            )
+          }
         >
           <View style={styles.menuIconBox}>
             <Ionicons name="pie-chart-outline" size={20} color={colors.primary} />
           </View>
           <View style={styles.menuContent}>
-            <Text style={styles.menuLabel}>Regras de Comissionamento</Text>
-            <Text style={styles.menuSub}>Percentual padrão e por serviço</Text>
+            <Text style={styles.menuLabel}>Comissão & Meta do Mês</Text>
+            <Text style={styles.menuSub}>
+              {formatPercent(DEFAULT_COMMISSION_RATE, 0)} · meta de {formatCurrency(MONTHLY_REVENUE_GOAL)}
+            </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.graphiteMuted} />
-        </TouchableOpacity>
-
-        <View style={styles.menuDivider} />
-
-        <TouchableOpacity
-          style={styles.menuItem}
-          onPress={() => handleFeatureInfo('Equipe & Especialistas')}
-        >
-          <View style={styles.menuIconBox}>
-            <Ionicons name="people-outline" size={20} color={colors.primary} />
-          </View>
-          <View style={styles.menuContent}>
-            <Text style={styles.menuLabel}>Equipe & Especialistas</Text>
-            <Text style={styles.menuSub}>Cadastrar colaboradoras e permissões</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.graphiteMuted} />
+          <Ionicons name="information-circle-outline" size={18} color={colors.graphiteMuted} />
         </TouchableOpacity>
       </Card>
 
@@ -118,6 +164,8 @@ export default function SettingsScreen() {
           icon={<Ionicons name="log-out-outline" size={18} color="#FFFFFF" />}
           onPress={handleLogout}
         />
+
+        <Text style={styles.apiFooter}>API: {DEFAULT_API_URL}</Text>
       </View>
     </ScrollView>
   );
@@ -231,5 +279,12 @@ const styles = StyleSheet.create({
   },
   logoutContainer: {
     marginTop: 4,
+  },
+  apiFooter: {
+    fontFamily: typography.fonts.body,
+    fontSize: 10,
+    color: colors.graphiteMuted,
+    textAlign: 'center',
+    marginTop: 14,
   },
 });

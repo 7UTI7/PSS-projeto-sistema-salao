@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  RefreshControl,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -14,218 +16,308 @@ import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { FloatingActionButton } from '../../components/ui/FloatingActionButton';
 import { SearchBar } from '../../components/ui/SearchBar';
-import { formatCurrency } from '../../utils/formatters';
+import { EmptyState, ErrorState, LoadingState } from '../../components/ui/QueryState';
+import {
+  useDeleteTransaction,
+  useFilteredTransactions,
+  useSettleTransaction,
+} from '../../hooks/useTransactions';
+import { usePeriodStore } from '../../store/periodStore';
+import { useAuthStore } from '../../store/authStore';
+import { getApiErrorMessage } from '../../services/api';
+import { formatCurrency, formatRelativeDateTime } from '../../utils/formatters';
+import {
+  paymentMethodLabels,
+  transactionOriginLabels,
+  transactionStatusLabels,
+} from '../../utils/labels';
+import { periodLabel } from '../../utils/period';
+import type { Transaction, TransactionType } from '../../types';
 
-interface TransactionItem {
-  id: string;
-  type: 'INCOME' | 'EXPENSE';
-  title: string;
-  category: string;
-  professional: string;
-  date: string;
-  amount: number;
-  paymentMethod: string;
-}
+type TypeFilter = 'todos' | TransactionType;
 
-const MOCK_TRANSACTIONS: TransactionItem[] = [
-  {
-    id: '1',
-    type: 'INCOME',
-    title: 'Efeito Wispy',
-    category: 'Cílios',
-    professional: 'Nicolle Neris',
-    date: 'Hoje, 15:40',
-    amount: 180.0,
-    paymentMethod: 'Cartão',
-  },
-  {
-    id: '2',
-    type: 'INCOME',
-    title: 'Unhas Fibra de Vidro',
-    category: 'Unhas',
-    professional: 'Stephany',
-    date: 'Hoje, 14:15',
-    amount: 30.0,
-    paymentMethod: 'Pix',
-  },
-  {
-    id: '3',
-    type: 'EXPENSE',
-    title: 'Compra descartáveis',
-    category: 'Insumos',
-    professional: 'Fornecedor Local',
-    date: 'Hoje, 11:20',
-    amount: 34.5,
-    paymentMethod: 'Débito',
-  },
-  {
-    id: '4',
-    type: 'INCOME',
-    title: 'Mechas Criativas & Tonalização',
-    category: 'Cabelo',
-    professional: 'Nicolle Neris',
-    date: 'Ontem, 16:30',
-    amount: 480.0,
-    paymentMethod: 'Cartão',
-  },
-  {
-    id: '5',
-    type: 'EXPENSE',
-    title: 'Reposição Cola de Cílios',
-    category: 'Insumos',
-    professional: 'Estoque Studio',
-    date: '28 Ago, 18:00',
-    amount: 150.0,
-    paymentMethod: 'Pix',
-  },
+const TYPE_FILTERS: { key: TypeFilter; label: string }[] = [
+  { key: 'todos', label: 'Todos' },
+  { key: 'receita', label: 'Receitas' },
+  { key: 'despesa', label: 'Despesas' },
 ];
 
 export default function TransactionsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'ALL' | 'INCOME' | 'EXPENSE'>('ALL');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('todos');
 
-  const filteredTransactions = MOCK_TRANSACTIONS.filter((item) => {
-    const matchesFilter =
-      activeFilter === 'ALL' || item.type === activeFilter;
-    const matchesSearch =
-      item.title.toLowerCase().includes(search.toLowerCase()) ||
-      item.professional.toLowerCase().includes(search.toLowerCase()) ||
-      item.category.toLowerCase().includes(search.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
+  const period = usePeriodStore((state) => state.period);
+  const isAdmin = useAuthStore((state) => state.user?.role === 'admin');
+
+  const filters = useMemo(
+    () => ({
+      search,
+      ...(typeFilter === 'todos' ? {} : { type: typeFilter }),
+    }),
+    [search, typeFilter]
+  );
+
+  const { transactions, isPending, isError, error, refetch, isRefetching } =
+    useFilteredTransactions(filters);
+  const settleMutation = useSettleTransaction();
+  const deleteMutation = useDeleteTransaction();
+
+  // Totais do que está na tela: muda junto com o filtro, como a dona espera.
+  const totals = useMemo(() => {
+    return transactions.reduce(
+      (accumulator, transaction) => {
+        if (transaction.status === 'cancelada') return accumulator;
+        if (transaction.type === 'receita') {
+          accumulator.revenue += transaction.grossAmount - transaction.discountAmount;
+        } else {
+          accumulator.expense += transaction.grossAmount;
+        }
+        return accumulator;
+      },
+      { revenue: 0, expense: 0 }
+    );
+  }, [transactions]);
+
+  function handleSettle(transaction: Transaction) {
+    Alert.alert(
+      'Confirmar liquidação',
+      `Marcar "${transaction.description}" como liquidada? A data de hoje entra no Fluxo de Caixa.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Liquidar',
+          onPress: () =>
+            settleMutation.mutate(transaction, {
+              onError: (mutationError) => Alert.alert('Erro', getApiErrorMessage(mutationError)),
+            }),
+        },
+      ]
+    );
+  }
+
+  function handleDelete(transaction: Transaction) {
+    Alert.alert(
+      'Excluir lançamento',
+      `"${transaction.description}" sairá das listas e dos relatórios. Confirma?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: () =>
+            deleteMutation.mutate(transaction._id, {
+              onError: (mutationError) => Alert.alert('Erro', getApiErrorMessage(mutationError)),
+            }),
+        },
+      ]
+    );
+  }
+
+  function renderItem({ item }: { item: Transaction }) {
+    const isIncome = item.type === 'receita';
+    const amount = isIncome ? item.grossAmount - item.discountAmount : item.grossAmount;
+    const isCancelled = item.status === 'cancelada';
+
+    return (
+      <TouchableOpacity
+        style={[styles.transactionCard, isCancelled && styles.cardCancelled]}
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate('NewTransaction', { transactionId: item._id })}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.cardInfo}>
+            <View style={styles.badgeRow}>
+              <View style={styles.categoryBadge}>
+                <Text style={styles.categoryText}>{item.category}</Text>
+              </View>
+              <View style={styles.paymentPill}>
+                <Text style={styles.paymentText}>{paymentMethodLabels[item.paymentMethod]}</Text>
+              </View>
+              <Text style={styles.dateText}>{formatRelativeDateTime(item.occurredAt)}</Text>
+            </View>
+
+            <Text style={[styles.itemTitle, isCancelled && styles.textCancelled]}>
+              {item.description}
+            </Text>
+
+            <View style={styles.metaRow}>
+              <Text style={styles.professionalText}>Por: {item.professional}</Text>
+              {item.origin !== 'manual' ? (
+                <View style={styles.originPill}>
+                  <Text style={styles.originText}>{transactionOriginLabels[item.origin]}</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={styles.amountBox}>
+            <Text
+              style={[
+                styles.amountText,
+                isIncome ? styles.incomeText : styles.expenseText,
+                isCancelled && styles.textCancelled,
+              ]}
+            >
+              {isIncome ? '+ ' : '- '}
+              {formatCurrency(amount)}
+            </Text>
+            <View style={[styles.statusPill, statusPillStyle(item.status)]}>
+              <Text style={[styles.statusText, statusTextStyle(item.status)]}>
+                {transactionStatusLabels[item.status]}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Comissão e lucro líquido só existem em receita e só interessam à admin. */}
+        {isAdmin && isIncome && !isCancelled ? (
+          <View style={styles.breakdownRow}>
+            <Text style={styles.breakdownItem}>
+              Taxa <Text style={styles.breakdownValue}>{formatCurrency(item.feeAmount)}</Text>
+            </Text>
+            <Text style={styles.breakdownItem}>
+              Comissão{' '}
+              <Text style={styles.breakdownValue}>{formatCurrency(item.commissionAmount)}</Text>
+            </Text>
+            <Text style={styles.breakdownItem}>
+              Líquido studio{' '}
+              <Text style={[styles.breakdownValue, styles.breakdownHighlight]}>
+                {formatCurrency(item.studioNetProfit)}
+              </Text>
+            </Text>
+          </View>
+        ) : null}
+
+        <View style={styles.actionRow}>
+          {item.status === 'pendente' ? (
+            <TouchableOpacity
+              style={styles.actionBtn}
+              activeOpacity={0.7}
+              onPress={() => handleSettle(item)}
+            >
+              <Ionicons name="checkmark-circle-outline" size={15} color={colors.statusSuccess} />
+              <Text style={[styles.actionText, { color: colors.statusSuccess }]}>Liquidar</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          <TouchableOpacity
+            style={styles.actionBtn}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('NewTransaction', { transactionId: item._id })}
+          >
+            <Ionicons name="create-outline" size={15} color={colors.primary} />
+            <Text style={[styles.actionText, { color: colors.primary }]}>Editar</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionBtn}
+            activeOpacity={0.7}
+            onPress={() => handleDelete(item)}
+          >
+            <Ionicons name="trash-outline" size={15} color={colors.statusError} />
+            <Text style={[styles.actionText, { color: colors.statusError }]}>Excluir</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
+  }
 
   return (
     <View style={styles.screen}>
-      <StudioTopHeader subtitleTag="TRANSAÇÕES" currentPeriod="Setembro 2024" />
+      <StudioTopHeader subtitleTag="TRANSAÇÕES" />
 
       <View style={styles.container}>
-        {/* Barra de Pesquisa */}
         <SearchBar
           value={search}
           onChangeText={setSearch}
-          placeholder="Buscar por serviço, cliente ou profissional..."
+          placeholder="Buscar por serviço, categoria ou profissional..."
           containerStyle={styles.searchBar}
         />
 
-        {/* Filtros em Pílula */}
         <View style={styles.filterRow}>
-          <TouchableOpacity
-            onPress={() => setActiveFilter('ALL')}
-            style={[
-              styles.filterPill,
-              activeFilter === 'ALL' && styles.filterPillActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterPillText,
-                activeFilter === 'ALL' && styles.filterPillTextActive,
-              ]}
-            >
-              Todos
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setActiveFilter('INCOME')}
-            style={[
-              styles.filterPill,
-              activeFilter === 'INCOME' && styles.filterPillActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterPillText,
-                activeFilter === 'INCOME' && styles.filterPillTextActive,
-              ]}
-            >
-              Receitas
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => setActiveFilter('EXPENSE')}
-            style={[
-              styles.filterPill,
-              activeFilter === 'EXPENSE' && styles.filterPillActive,
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterPillText,
-                activeFilter === 'EXPENSE' && styles.filterPillTextActive,
-              ]}
-            >
-              Despesas
-            </Text>
-          </TouchableOpacity>
+          {TYPE_FILTERS.map((filter) => {
+            const isActive = typeFilter === filter.key;
+            return (
+              <TouchableOpacity
+                key={filter.key}
+                onPress={() => setTypeFilter(filter.key)}
+                style={[styles.filterPill, isActive && styles.filterPillActive]}
+              >
+                <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                  {filter.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
-        {/* Listagem */}
-        <FlatList
-          data={filteredTransactions}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => {
-            const isIncome = item.type === 'INCOME';
+        {/* Resumo do que está filtrado, antes da lista. */}
+        <View style={styles.summaryRow}>
+          <View style={styles.summaryBox}>
+            <Text style={styles.summaryLabel}>Receitas</Text>
+            <Text style={[styles.summaryValue, { color: colors.violetRoyal }]}>
+              {formatCurrency(totals.revenue)}
+            </Text>
+          </View>
+          <View style={styles.summaryBox}>
+            <Text style={styles.summaryLabel}>Despesas</Text>
+            <Text style={[styles.summaryValue, { color: colors.statusError }]}>
+              {formatCurrency(totals.expense)}
+            </Text>
+          </View>
+          <View style={styles.summaryBox}>
+            <Text style={styles.summaryLabel}>Saldo</Text>
+            <Text style={styles.summaryValue}>
+              {formatCurrency(totals.revenue - totals.expense)}
+            </Text>
+          </View>
+        </View>
 
-            return (
-              <View style={styles.transactionCard}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.cardInfo}>
-                    <View style={styles.badgeRow}>
-                      <View style={styles.categoryBadge}>
-                        <Text style={styles.categoryText}>{item.category}</Text>
-                      </View>
-                      <View style={styles.paymentPill}>
-                        <Text style={styles.paymentText}>{item.paymentMethod}</Text>
-                      </View>
-                      <Text style={styles.dateText}>{item.date}</Text>
-                    </View>
-                    <Text style={styles.itemTitle}>{item.title}</Text>
-                    <Text style={styles.professionalText}>
-                      Por: {item.professional}
-                    </Text>
-                  </View>
-
-                  <View style={styles.amountBox}>
-                    <Text
-                      style={[
-                        styles.amountText,
-                        isIncome ? styles.incomeText : styles.expenseText,
-                      ]}
-                    >
-                      {isIncome ? '+ ' : '- '}
-                      {formatCurrency(item.amount)}
-                    </Text>
-                    <Ionicons
-                      name={isIncome ? 'arrow-up-circle' : 'arrow-down-circle'}
-                      size={16}
-                      color={isIncome ? colors.violetRoyal : colors.statusError}
-                      style={styles.amountIcon}
-                    />
-                  </View>
-                </View>
-              </View>
-            );
-          }}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="search" size={40} color={colors.lavenderAccent} />
-              <Text style={styles.emptyTitle}>Nenhum registro encontrado</Text>
-              <Text style={styles.emptySubtitle}>
-                Tente alterar os termos da busca ou filtro selecionado.
-              </Text>
-            </View>
-          }
-        />
+        {isPending ? (
+          <LoadingState label="Carregando lançamentos..." />
+        ) : isError ? (
+          <ErrorState error={error} onRetry={refetch} />
+        ) : (
+          <FlatList
+            data={transactions}
+            keyExtractor={(item) => item._id}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            renderItem={renderItem}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefetching}
+                onRefresh={() => void refetch()}
+                tintColor={colors.primary}
+              />
+            }
+            ListEmptyComponent={
+              <EmptyState
+                icon="receipt-outline"
+                title="Nenhum lançamento no período"
+                description={`Não há registros em ${periodLabel(period)} com os filtros atuais. Troque o mês no cabeçalho ou registre um lançamento.`}
+              />
+            }
+          />
+        )}
       </View>
 
       <FloatingActionButton />
     </View>
   );
+}
+
+function statusPillStyle(status: Transaction['status']) {
+  if (status === 'liquidada') return { backgroundColor: colors.statusSuccessBg };
+  if (status === 'cancelada') return { backgroundColor: colors.statusErrorBg };
+  return { backgroundColor: colors.statusWarningBg };
+}
+
+function statusTextStyle(status: Transaction['status']) {
+  if (status === 'liquidada') return { color: colors.statusSuccess };
+  if (status === 'cancelada') return { color: colors.statusError };
+  return { color: colors.statusWarning };
 }
 
 const styles = StyleSheet.create({
@@ -244,7 +336,7 @@ const styles = StyleSheet.create({
   filterRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 14,
+    marginBottom: 12,
   },
   filterPill: {
     paddingHorizontal: 14,
@@ -266,8 +358,35 @@ const styles = StyleSheet.create({
   filterPillTextActive: {
     color: '#FFFFFF',
   },
+  summaryRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 14,
+  },
+  summaryBox: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderWhisper,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+  },
+  summaryLabel: {
+    fontFamily: typography.fonts.bodyMedium,
+    fontSize: 10,
+    color: colors.graphiteMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  summaryValue: {
+    fontFamily: typography.fonts.bodyBold,
+    fontSize: 13,
+    color: colors.graphiteText,
+    marginTop: 2,
+  },
   listContent: {
-    paddingBottom: 90,
+    paddingBottom: 100,
   },
   transactionCard: {
     backgroundColor: '#FFFFFF',
@@ -277,6 +396,12 @@ const styles = StyleSheet.create({
     borderColor: colors.borderWhisper,
     marginBottom: 10,
     ...shadows.card,
+  },
+  cardCancelled: {
+    opacity: 0.6,
+  },
+  textCancelled: {
+    textDecorationLine: 'line-through',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -290,6 +415,7 @@ const styles = StyleSheet.create({
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 6,
     marginBottom: 5,
   },
@@ -326,13 +452,34 @@ const styles = StyleSheet.create({
     color: colors.graphiteText,
     marginBottom: 2,
   },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   professionalText: {
     fontFamily: typography.fonts.body,
     fontSize: 11,
     color: colors.graphiteMuted,
   },
+  originPill: {
+    backgroundColor: colors.lavenderLight,
+    borderWidth: 1,
+    borderColor: colors.lavenderSubtle,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: borderRadius.xs,
+  },
+  originText: {
+    fontFamily: typography.fonts.bodySemiBold,
+    fontSize: 8,
+    color: colors.violetRoyal,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
   amountBox: {
     alignItems: 'flex-end',
+    gap: 4,
   },
   amountText: {
     fontFamily: typography.fonts.bodyBold,
@@ -344,26 +491,53 @@ const styles = StyleSheet.create({
   expenseText: {
     color: colors.statusError,
   },
-  amountIcon: {
-    marginTop: 3,
+  statusPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: borderRadius.xs,
   },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 48,
+  statusText: {
+    fontFamily: typography.fonts.bodyBold,
+    fontSize: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
-  emptyTitle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 16,
-    color: colors.graphiteText,
-    marginTop: 12,
+  breakdownRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginTop: 10,
+    paddingTop: 9,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderWhisper,
   },
-  emptySubtitle: {
+  breakdownItem: {
     fontFamily: typography.fonts.body,
-    fontSize: 12,
+    fontSize: 10,
     color: colors.graphiteMuted,
-    textAlign: 'center',
-    marginTop: 4,
-    maxWidth: 240,
+  },
+  breakdownValue: {
+    fontFamily: typography.fonts.bodySemiBold,
+    color: colors.graphiteText,
+  },
+  breakdownHighlight: {
+    color: colors.violetRoyal,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 14,
+    marginTop: 10,
+    paddingTop: 9,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderWhisper,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  actionText: {
+    fontFamily: typography.fonts.bodySemiBold,
+    fontSize: 11,
   },
 });

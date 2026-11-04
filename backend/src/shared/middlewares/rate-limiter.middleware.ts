@@ -18,6 +18,15 @@ export const emailVerificationRateLimiter = createAuthRateLimiter(10);
 export const passwordResetRequestRateLimiter = createAuthRateLimiter(5);
 export const passwordResetActionRateLimiter = createAuthRateLimiter(10);
 
+// Importar relatório é caro (parse de planilha inteira): 20 envios por hora bastam.
+export const importRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { status: 'error', message: 'Muitas importações seguidas. Tente novamente mais tarde.' },
+});
+
 export const apiRateLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 120,

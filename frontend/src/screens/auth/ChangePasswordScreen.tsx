@@ -16,8 +16,11 @@ import { getApiErrorMessage } from '../../services/api';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { Button } from '../../components/ui/Button';
 
+/** Mínimo exigido pelo backend (passwordSchema em auth.controller.ts). */
+const MIN_PASSWORD_LENGTH = 12;
+
 export default function ChangePasswordScreen() {
-  const [oldPassword, setOldPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,13 +28,18 @@ export default function ChangePasswordScreen() {
   const { setMustChangePassword, logout } = useAuthStore();
 
   async function handleChangePassword() {
-    if (!oldPassword || !newPassword || !confirmPassword) {
+    if (!currentPassword || !newPassword || !confirmPassword) {
       Alert.alert('Atenção', 'Preencha todos os campos.');
       return;
     }
 
-    if (newPassword.length < 8) {
-      Alert.alert('Atenção', 'A nova senha deve ter no mínimo 8 caracteres.');
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      Alert.alert('Atenção', `A nova senha deve ter no mínimo ${MIN_PASSWORD_LENGTH} caracteres.`);
+      return;
+    }
+
+    if (newPassword === currentPassword) {
+      Alert.alert('Atenção', 'A nova senha precisa ser diferente da atual.');
       return;
     }
 
@@ -42,9 +50,14 @@ export default function ChangePasswordScreen() {
 
     setLoading(true);
     try {
-      await authService.changePassword(oldPassword, newPassword);
+      const message = await authService.changePassword(currentPassword, newPassword);
+      // Libera a navegação: enquanto a flag estiver ligada, a API responde 403 em
+      // todas as rotas de negócio e o app fica preso nesta tela.
       setMustChangePassword(false);
-      Alert.alert('Sucesso', 'Senha alterada com sucesso!');
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      Alert.alert('Sucesso', message || 'Senha alterada.');
     } catch (error) {
       const msg = getApiErrorMessage(error);
       Alert.alert('Erro', msg);
@@ -71,8 +84,8 @@ export default function ChangePasswordScreen() {
             style={styles.input}
             placeholder="Sua senha atual"
             placeholderTextColor={colors.graphiteMuted}
-            value={oldPassword}
-            onChangeText={setOldPassword}
+            value={currentPassword}
+            onChangeText={setCurrentPassword}
             secureTextEntry
             editable={!loading}
           />
@@ -80,7 +93,7 @@ export default function ChangePasswordScreen() {
           <Text style={styles.label}>Nova Senha</Text>
           <TextInput
             style={styles.input}
-            placeholder="Mínimo 8 caracteres"
+            placeholder={`Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
             placeholderTextColor={colors.graphiteMuted}
             value={newPassword}
             onChangeText={setNewPassword}

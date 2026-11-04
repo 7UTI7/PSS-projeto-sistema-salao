@@ -1,5 +1,5 @@
 // Regras de negócio dos lançamentos: listar, criar, editar, liquidar e excluir.
-import { Transaction, type Professional, type TransactionFields } from '../../models/transaction.model.js';
+import { Transaction, type PaymentMethod, type Professional, type TransactionFields } from '../../models/transaction.model.js';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { AppError } from '../../shared/utils/app-error.js';
 import { CalculationService } from './calculation.service.js';
@@ -18,7 +18,7 @@ export interface CreateTransactionInput {
   professional?: Professional | undefined;
   category: string;
   costType?: 'fixo' | 'variavel' | undefined;
-  paymentMethod: 'pix' | 'credito' | 'debito' | 'dinheiro';
+  paymentMethod: PaymentMethod;
   occurredAt: Date;
   settledAt?: Date | undefined;
   status: 'pendente' | 'liquidada' | 'cancelada';

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -11,78 +11,23 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { FloatingActionButton } from '../../components/ui/FloatingActionButton';
-
-interface InventoryItem {
-  id: string;
-  name: string;
-  category: string;
-  quantity: number;
-  minQuantity: number;
-  unit: string;
-  status: 'critical' | 'low' | 'ok';
-}
-
-const INITIAL_INVENTORY: InventoryItem[] = [
-  {
-    id: '1',
-    name: 'Cola de Cílios Premium',
-    category: 'Cílios / Micropigmentação',
-    quantity: 2,
-    minQuantity: 5,
-    unit: 'unidades',
-    status: 'critical',
-  },
-  {
-    id: '2',
-    name: 'Luvas descartáveis Nitrílica (M)',
-    category: 'Biossegurança & Insumos',
-    quantity: 1,
-    minQuantity: 3,
-    unit: 'caixas',
-    status: 'low',
-  },
-  {
-    id: '3',
-    name: 'Pigmento Labial Rose Nude',
-    category: 'Dermopigmentação',
-    quantity: 6,
-    minQuantity: 4,
-    unit: 'frascos',
-    status: 'ok',
-  },
-  {
-    id: '4',
-    name: 'Fios para Extensão 0.07 D',
-    category: 'Cílios / Lash',
-    quantity: 8,
-    minQuantity: 4,
-    unit: 'bandejas',
-    status: 'ok',
-  },
-  {
-    id: '5',
-    name: 'Anestésico Tópico Pomada',
-    category: 'Procedimentos Estéticos',
-    quantity: 4,
-    minQuantity: 3,
-    unit: 'bisnagas',
-    status: 'ok',
-  },
-];
+import { INVENTORY_ITEMS, LOW_STOCK_ITEMS, stockStatus } from '../../data/inventory.mock';
 
 export default function InventoryScreen() {
-  const [items, setItems] = useState<InventoryItem[]>(INITIAL_INVENTORY);
+  const items = INVENTORY_ITEMS;
+  const lowStockCount = LOW_STOCK_ITEMS.length;
 
   function handleReorder(name: string) {
     Alert.alert(
-      'Pedido de Compra',
-      `Solicitação de reposição para "${name}" gerada no módulo de compras.`
+      'Módulo local',
+      `O controle de insumos ainda não existe na API, então "${name}" não gera pedido de compra de verdade. `
+        + 'Para registrar a compra no financeiro, lance uma despesa variável na categoria de insumos.'
     );
   }
 
   return (
     <View style={styles.screen}>
-      <StudioTopHeader subtitleTag="ESTOQUE & INSUMOS" currentPeriod="Setembro 2024" />
+      <StudioTopHeader subtitleTag="ESTOQUE & INSUMOS" />
 
       <ScrollView
         style={styles.container}
@@ -94,21 +39,31 @@ export default function InventoryScreen() {
           <Text style={styles.pageDesc}>
             Monitore o estoque mínimo de materiais, cabines e biossegurança do atelier.
           </Text>
+
+          {/* Deixa claro que esta tela não está ligada à API, ao contrário das outras. */}
+          <View style={styles.localBadge}>
+            <Ionicons name="information-circle-outline" size={14} color={colors.statusWarning} />
+            <Text style={styles.localBadgeText}>
+              Módulo local: o backend ainda não tem controle de insumos.
+            </Text>
+          </View>
         </View>
 
         {/* Resumo do Estoque */}
         <View style={styles.kpiRow}>
           <View style={styles.kpiBox}>
-            <Text style={styles.kpiNum}>2</Text>
+            <Text style={styles.kpiNum}>{lowStockCount}</Text>
             <Text style={styles.kpiLabel}>Precisam Reposição</Text>
           </View>
           <View style={styles.kpiBox}>
-            <Text style={[styles.kpiNum, { color: colors.statusSuccess }]}>5</Text>
+            <Text style={[styles.kpiNum, { color: colors.statusSuccess }]}>{items.length}</Text>
             <Text style={styles.kpiLabel}>Itens Monitorados</Text>
           </View>
           <View style={styles.kpiBox}>
-            <Text style={[styles.kpiNum, { color: colors.violetRoyal }]}>100%</Text>
-            <Text style={styles.kpiLabel}>Auditado Hoje</Text>
+            <Text style={[styles.kpiNum, { color: colors.violetRoyal }]}>
+              {items.length - lowStockCount}
+            </Text>
+            <Text style={styles.kpiLabel}>Em Nível Normal</Text>
           </View>
         </View>
 
@@ -116,8 +71,9 @@ export default function InventoryScreen() {
         <Text style={styles.sectionTitle}>Materiais em Cabine</Text>
 
         {items.map((item) => {
-          const isCritical = item.status === 'critical';
-          const isLow = item.status === 'low';
+          const status = stockStatus(item);
+          const isCritical = status === 'critical';
+          const isLow = status === 'low';
 
           return (
             <View key={item.id} style={styles.itemCard}>
@@ -227,6 +183,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.graphiteMuted,
     marginTop: 2,
+  },
+  localBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.statusWarningBg,
+  },
+  localBadgeText: {
+    flex: 1,
+    fontFamily: typography.fonts.bodyMedium,
+    fontSize: 10,
+    color: colors.statusWarning,
   },
   kpiRow: {
     flexDirection: 'row',

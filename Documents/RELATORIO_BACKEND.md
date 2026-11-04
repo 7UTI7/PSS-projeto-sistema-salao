@@ -903,8 +903,8 @@ Registrar o que ainda não está pronto é parte da honestidade técnica do rela
 
 | Limitação | Situação atual | Encaminhamento |
 |---|---|---|
-| **Pipeline de ingestão Booksy/InfinitePay** | A coleção `importbatches` está modelada, com hash de conteúdo para deduplicação, mas **não há código que a utilize**: sem controller, service ou rota | Implementar `/api/imports` com *upload*, *parsing* de `.xlsx`/`.csv`/`.pdf`, deduplicação por `contentHash` e *rollback* de lote |
-| **Vínculo lote ↔ lançamento** | `transactions` não tem `importBatchId` | Acrescentar o campo; sem ele não é possível reverter um lote importado |
+| **Pipeline de ingestão Booksy/InfinitePay** | Implementado em `/api/imports`: *upload* multipart, *parsing* de `.xlsx` e `.csv`, deduplicação por `contentHash` e por `{ origin, externalId }`, pré-visualização sem gravar e *rollback* de lote | Falta o `.pdf` (o extrato da InfinitePay em PDF usa fontes com codificação própria e exigiria uma biblioteca de extração) e a conciliação automática entre atendimento do Booksy e liquidação da InfinitePay |
+| **Vínculo lote ↔ lançamento** | `transactions` tem `importBatchId` e `externalId`, e o *rollback* do lote usa esse vínculo | Concluído |
 | **Profissional fixada em código** | `professionalFor()` mapeia `admin → Nicolle` e `colaborador → Stefany`; `users` não tem campo `professional` | Criar o vínculo no modelo `User`. Hoje, uma segunda colaboradora quebraria a regra silenciosamente |
 | **Controle de estoque** | Previsto no escopo do produto, não iniciado | Modelar insumos e consumo por atendimento |
 | **Histórico de senhas** | A política de 90 dias está implementada, mas **não há** bloqueio de reutilização de senhas anteriores | Guardar os últimos hashes em `users` e comparar na troca |

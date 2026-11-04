@@ -16,8 +16,8 @@ O **Sistema Salão** atua como **retaguarda analítica financeira**, convivendo 
 |---|---|
 | 🔐 Autenticação & RBAC | Login JWT com perfis `ADMIN` e `COLABORADOR` |
 | 💸 Lançamentos Financeiros | Receitas/despesas com Lançamento Rápido em 3 toques |
-| 📊 Pipeline de Ingestão | Importação de relatórios Booksy (.xlsx) e InfinitePay (.pdf/.csv) |
-| 📦 Controle de Estoque | Inventário de insumos, valor imobilizado e alertas |
+| 📊 Pipeline de Ingestão | Importação de relatórios Booksy (.xlsx) e InfinitePay (.csv), com pré-visualização e *rollback* de lote |
+| 📦 Controle de Estoque | Inventário de insumos, valor imobilizado e alertas *(tela local; sem módulo na API ainda)* |
 | 📈 DRE & Fluxo de Caixa | Apuração automática da DRE Simplificada e Fluxo de Caixa |
 | 📱 Dashboard Mobile | KPIs, Ticket Médio, faturamento por profissional e metas |
 
@@ -29,12 +29,16 @@ O **Sistema Salão** atua como **retaguarda analítica financeira**, convivendo 
 PSS-projeto-sistema-salao/
 ├── frontend/          # Aplicativo Mobile (React Native / Expo + TypeScript)
 │   └── src/
-│       ├── components/    # Componentes reutilizáveis
-│       ├── screens/       # Telas do aplicativo
+│       ├── components/    # Componentes reutilizáveis (UI e estados de carregamento/erro)
+│       ├── screens/       # Telas do aplicativo (main, auth, settings)
 │       ├── navigation/    # Configuração do React Navigation
-│       ├── store/         # Estado global (Zustand)
-│       ├── services/      # Comunicação com API (Axios)
-│       └── utils/         # Utilitários e helpers
+│       ├── hooks/         # Hooks de dados por domínio (TanStack Query)
+│       ├── store/         # Estado global (Zustand): sessão e período de referência
+│       ├── services/      # Comunicação com API (Axios) e chaves de cache
+│       ├── types/         # Tipos espelhando os schemas da API
+│       ├── config/        # Parâmetros do estúdio sem cadastro na API (meta, comissão)
+│       ├── data/          # Dados locais de demonstração (estoque)
+│       └── utils/         # Formatadores, rótulos e cálculo de período
 │
 ├── backend/           # API RESTful (Node.js 20 + TypeScript + Express + MongoDB)
 │   ├── src/
