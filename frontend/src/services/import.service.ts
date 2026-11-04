@@ -2,10 +2,11 @@
 //
 // Papel de cada origem (a API trata as duas de formas diferentes de propósito):
 //   Booksy      -> o relatório de agendamentos vira RECEITA (serviço, profissional, valor)
-//   InfinitePay -> o extrato vira DESPESA de taxa de maquininha
-// Se a InfinitePay também gerasse receita, o mesmo atendimento entraria duas vezes e o
-// faturamento do mês dobraria. Então importar as duas origens é o fluxo correto, e o
-// resultado é: bruto do Booksy menos as taxas da InfinitePay.
+//   InfinitePay -> o extrato vira CAIXA: Pix recebidos e repasses da maquininha, já
+//                  líquidos de tarifa, mais as saídas da conta
+// O faturamento do mês é sempre o do Booksy. O extrato não entra como receita no DRE —
+// seria o mesmo atendimento contado duas vezes —, serve para conferir quanto do que foi
+// vendido realmente caiu na conta. Essa comparação é a conciliação.
 import { api, postFormData } from './api';
 import { ApiResponse, ImportBatch, ImportPreview, ImportResult, ImportSource, PickedFile } from '../types';
 
@@ -63,11 +64,30 @@ export const importService = {
   },
 };
 
-/** Extensões e MIME types que a API aceita, para passar ao seletor de arquivos. */
-export const ACCEPTED_IMPORT_MIME_TYPES = [
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-excel',
-  'text/csv',
-  'text/comma-separated-values',
-  'text/plain',
-];
+/**
+ * MIME types aceitos por origem, para o seletor abrir só o que a API consegue ler.
+ * São listas diferentes de propósito: o Booksy exporta planilha e o extrato da
+ * InfinitePay sai em PDF pelo app. Oferecer PDF no card do Booksy (ou .xlsx no da
+ * InfinitePay) só levaria o arquivo a um 400 depois do upload.
+ */
+export const ACCEPTED_MIME_TYPES_BY_SOURCE: Record<ImportSource, string[]> = {
+  booksy: [
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.ms-excel',
+    'text/csv',
+    'text/comma-separated-values',
+    'text/plain',
+  ],
+  infinitepay: [
+    'application/pdf',
+    'text/csv',
+    'text/comma-separated-values',
+    'text/plain',
+  ],
+};
+
+/** Formatos de cada origem em texto, para o rótulo do botão de seleção. */
+export const ACCEPTED_EXTENSIONS_LABEL: Record<ImportSource, string> = {
+  booksy: '.xlsx ou .csv',
+  infinitepay: '.pdf ou .csv',
+};

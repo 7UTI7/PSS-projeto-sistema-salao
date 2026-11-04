@@ -3,7 +3,7 @@
 // É a porta de entrada dos dados do studio: a dona exporta das duas plataformas e sobe
 // aqui. Cada origem entra de um jeito diferente, de propósito:
 //   Booksy      -> receitas (serviço, profissional, valor bruto e desconto)
-//   InfinitePay -> despesas de taxa de maquininha
+//   InfinitePay -> caixa recebido (Pix e repasses da maquininha, já líquidos de tarifa)
 // Importar as duas não duplica faturamento; o detalhe está em services/import.service.ts.
 //
 // O fluxo é: escolher arquivo -> conferir a prévia -> confirmar. A prévia existe porque
@@ -32,6 +32,7 @@ import {
 } from '../../hooks/useImports';
 import { useIsAdmin } from '../../hooks/useReports';
 import { getApiErrorMessage } from '../../services/api';
+import { ACCEPTED_EXTENSIONS_LABEL } from '../../services/import.service';
 import { DEFAULT_COMMISSION_RATE } from '../../config/studio.config';
 import { formatCurrency, formatDate, formatPercent, parseAmountInput } from '../../utils/formatters';
 import { importBatchStatusLabels, importSourceLabels } from '../../utils/labels';
@@ -61,12 +62,12 @@ const SOURCES: SourceCard[] = [
   {
     source: 'infinitepay',
     title: 'InfinitePay',
-    subtitle: 'Maquininha, Taxas & Pix',
+    subtitle: 'Extrato: Pix & Maquininha',
     icon: 'card-outline',
-    tag: 'Taxas',
+    tag: 'Caixa',
     explanation:
-      'Vira despesa: só as taxas cobradas pela maquininha. A venda em si já entrou pelo Booksy, então nada é contado duas vezes.',
-    hint: 'Exporte o extrato de vendas em .csv. Linhas sem taxa (Pix) não geram lançamento.',
+      'Vira caixa: os Pix recebidos e os repasses da maquininha, que já chegam líquidos de tarifa. O faturamento continua sendo o do Booksy, então a venda não é contada duas vezes.',
+    hint: 'No app da InfinitePay: Relatório de movimentações → exportar (.pdf).',
   },
 ];
 
@@ -93,7 +94,7 @@ export default function ImportsScreen() {
   /** Escolher o arquivo e já pedir a prévia: são uma única ação para a dona. */
   async function handlePick(selected: ImportSource) {
     try {
-      const picked = await pickFile();
+      const picked = await pickFile(selected);
       if (!picked) return;
 
       setSource(selected);
@@ -282,7 +283,9 @@ export default function ImportsScreen() {
                 </View>
 
                 <Text style={styles.uploadTitle} numberOfLines={2}>
-                  {isSelected && file ? file.name : 'Selecionar arquivo (.xlsx ou .csv)'}
+                  {isSelected && file
+                    ? file.name
+                    : `Selecionar arquivo (${ACCEPTED_EXTENSIONS_LABEL[card.source]})`}
                 </Text>
                 <Text style={styles.uploadSub}>
                   {isSelected && file?.size

@@ -2,10 +2,10 @@
 import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
-import { ACCEPTED_IMPORT_MIME_TYPES, importService, type ImportRequest } from '../services/import.service';
+import { ACCEPTED_MIME_TYPES_BY_SOURCE, importService, type ImportRequest } from '../services/import.service';
 import { queryKeys } from '../services/query-keys';
 import { useIsAdmin } from './useReports';
-import type { PickedFile } from '../types';
+import type { ImportSource, PickedFile } from '../types';
 
 export function useImportBatches() {
   const isAdmin = useIsAdmin();
@@ -62,13 +62,16 @@ export function useRollbackImport() {
  * Abre o seletor de arquivos do sistema e guarda o escolhido.
  * `copyToCacheDirectory` fica ligado porque o upload precisa ler a URI depois que o
  * seletor fecha; sem a cópia, em Android a URI de content:// pode já ter expirado.
+ *
+ * A origem é obrigatória porque cada uma aceita formatos diferentes: filtrar o seletor
+ * pela origem evita escolher um arquivo que a API vai recusar.
  */
 export function useFilePicker() {
   const [file, setFile] = useState<PickedFile | null>(null);
 
-  const pickFile = useCallback(async (): Promise<PickedFile | null> => {
+  const pickFile = useCallback(async (source: ImportSource): Promise<PickedFile | null> => {
     const result = await DocumentPicker.getDocumentAsync({
-      type: ACCEPTED_IMPORT_MIME_TYPES,
+      type: ACCEPTED_MIME_TYPES_BY_SOURCE[source],
       copyToCacheDirectory: true,
       multiple: false,
     });
