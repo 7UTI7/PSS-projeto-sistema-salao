@@ -150,3 +150,74 @@ describe('Os dois arquivos reais, de ponta a ponta', () => {
     expect(novamente.body.data.importedCount).toBe(criados);
   }, 120_000);
 });
+
+describe('A auditoria com os dois arquivos reais', () => {
+  /** Manda os dois juntos, pelo fluxo novo. */
+  function submit() {
+    const statement = statementPath();
+    return request(app)
+      .post('/api/audits')
+      .set('Authorization', `Bearer ${token}`)
+      .field('defaultCommissionRate', '0.4')
+      .attach('booksy', readFileSync(BOOKSY_FILE), { filename: path.basename(BOOKSY_FILE) })
+      .attach('infinitepay', readFileSync(statement), { filename: path.basename(statement) });
+  }
+
+  it('grava as 8 retiradas da titular e soma o Saldo Retirado', async () => {
+    const response = await submit();
+    expect(response.status).toBe(201);
+
+    const withdrawals = await Transaction.find({
+      countsInDre: false,
+      category: 'Retiradas para a conta do salão',
+      deletedAt: null,
+    }).lean();
+
+    expect(withdrawals).toHaveLength(8);
+    expect(withdrawals.reduce((total, row) => total + row.grossAmount, 0)).toBeCloseTo(6122.28, 2);
+  }, 120_000);
+
+  it('os meses caem em fonte_ausente, porque os arquivos são de meses diferentes', async () => {
+    await submit();
+
+    // Booksy cobre 18 a 22/08; o extrato, 01/10 a 01/11. Nenhum mês tem as duas fontes,
+    // então a auditoria não pode fechar — e esse é o resultado correto para esse par,
+    // não um defeito. Fechar os cenários A e B exige um par do mesmo mês.
+    for (const period of ['2026-08', '2026-10', '2026-11']) {
+      const audit = await request(app)
+        .get('/api/audits')
+        .query({ period })
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(audit.status).toBe(200);
+      expect(audit.body.data.outcome).toBe('fonte_ausente');
+    }
+
+    const agosto = await request(app)
+      .get('/api/audits').query({ period: '2026-08' }).set('Authorization', `Bearer ${token}`);
+    // Agosto: só o Booksy. 2.230,00 brutos menos 360,00 de cortesia.
+    expect(agosto.body.data.fonteFaltante).toBe('infinitepay');
+    expect(agosto.body.data.faturamentoBooksy).toBeCloseTo(1870, 2);
+
+    const outubro = await request(app)
+      .get('/api/audits').query({ period: '2026-10' }).set('Authorization', `Bearer ${token}`);
+    // Outubro: só o extrato. 6.898,28 de entradas e 6.122,28 retirados.
+    expect(outubro.body.data.fonteFaltante).toBe('booksy');
+    expect(outubro.body.data.entradasInfinitepay).toBeCloseTo(6898.28, 2);
+    expect(outubro.body.data.saldoRetirado).toBeCloseTo(6122.28, 2);
+    expect(outubro.body.data.saldoLiquido).toBeCloseTo(776, 2);
+  }, 120_000);
+
+  it('as retiradas não entram no DRE', async () => {
+    await submit();
+
+    const dre = await request(app)
+      .get('/api/reports/dre')
+      .query(monthRange(2026, 10))
+      .set('Authorization', `Bearer ${token}`);
+
+    // Lançar as retiradas como despesa zeraria o lucro: ela retira quase tudo o que entra.
+    expect(dre.body.data.despesas).toBe(0);
+    expect(dre.body.data.faturamentoBruto).toBeCloseTo(6898.28, 2);
+  }, 120_000);
+});

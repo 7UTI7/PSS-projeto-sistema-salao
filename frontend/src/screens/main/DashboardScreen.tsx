@@ -16,6 +16,7 @@ import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { FloatingActionButton } from '../../components/ui/FloatingActionButton';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/QueryState';
 import { useCashFlowReport, useFinancialSummary, useIsAdmin } from '../../hooks/useReports';
+import { useAudit } from '../../hooks/useAudit';
 import { useFilteredTransactions } from '../../hooks/useTransactions';
 import { useAuthStore } from '../../store/authStore';
 import { usePeriodStore } from '../../store/periodStore';
@@ -43,6 +44,7 @@ export default function DashboardScreen() {
 
   const dreQuery = useFinancialSummary();
   const cashFlowQuery = useCashFlowReport();
+  const auditQuery = useAudit();
   const { transactions, isPending: loadingTransactions, isError, error, refetch } =
     useFilteredTransactions();
 
@@ -78,6 +80,9 @@ export default function DashboardScreen() {
   );
 
   const dre = dreQuery.data;
+  // Só a admin lê a auditoria (o hook é `enabled: isAdmin`), então para a colaboradora
+  // isto fica undefined e o banner cai no saldo liquidado, como antes.
+  const audit = auditQuery.data;
   const goalProgress = dre ? Math.min(shareOf(dre.faturamentoBruto, MONTHLY_REVENUE_GOAL), 1) : 0;
   const refreshing = dreQuery.isRefetching || cashFlowQuery.isRefetching;
 
@@ -139,7 +144,13 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* SALDO EM CAIXA: regime de caixa, só o que foi liquidado no período. */}
+        {/* OS TRÊS SALDOS, vindos da auditoria do mês.
+            Bruto = o que entrou, já explicado. Retirado = o que ela tirou da conta da
+            InfinitePay. Líquido = o que ainda está lá. O número grande é o Líquido,
+            porque é o que responde "quanto eu tenho".
+
+            Para a colaboradora, que não vê a auditoria, o banner segue mostrando o saldo
+            liquidado do período, como antes. */}
         <View style={styles.bannerCard}>
           <View style={styles.glowTopRight} />
           <View style={styles.glowBottomLeft} />
@@ -147,7 +158,9 @@ export default function DashboardScreen() {
           <View style={styles.bannerHeader}>
             <View style={styles.bannerTagRow}>
               <View style={styles.pulseDot} />
-              <Text style={styles.bannerTagText}>SALDO LIQUIDADO NO PERÍODO</Text>
+              <Text style={styles.bannerTagText}>
+                {audit ? 'SALDO AINDA NA CONTA' : 'SALDO LIQUIDADO NO PERÍODO'}
+              </Text>
             </View>
             <View style={styles.consolidatedBadge}>
               <Text style={styles.consolidatedText}>{periodLabel(period)}</Text>
@@ -158,10 +171,30 @@ export default function DashboardScreen() {
             <Text style={styles.balanceCurrency}>R$</Text>
             <Text style={styles.balanceNumber}>
               {balanceVisible
-                ? formatCurrency(cashFlow.balance).replace('R$', '').trim()
+                ? formatCurrency(audit ? audit.saldoLiquido : cashFlow.balance)
+                    .replace('R$', '')
+                    .trim()
                 : '••••••••'}
             </Text>
           </View>
+
+          {audit ? (
+            <View style={styles.saldoRow}>
+              <View style={styles.saldoCol}>
+                <Text style={styles.saldoLabel}>SALDO BRUTO</Text>
+                <Text style={styles.saldoValue}>
+                  {balanceVisible ? formatCurrency(audit.saldoBruto) : '••••'}
+                </Text>
+              </View>
+              <View style={styles.saldoDivider} />
+              <View style={styles.saldoCol}>
+                <Text style={styles.saldoLabel}>SALDO RETIRADO</Text>
+                <Text style={styles.saldoValue}>
+                  {balanceVisible ? formatCurrency(audit.saldoRetirado) : '••••'}
+                </Text>
+              </View>
+            </View>
+          ) : null}
 
           <View style={styles.bannerFooter}>
             <View style={styles.growthBadge}>
@@ -181,6 +214,24 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* AUDITORIA PENDENTE: os números acima só são confiáveis com a conta fechada,
+            então o aviso leva direto para onde se resolve. */}
+        {audit && audit.outcome !== 'aprovada' ? (
+          <TouchableOpacity
+            style={styles.auditWarnCard}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('Main', { screen: 'Imports' })}
+          >
+            <Ionicons name="alert-circle" size={18} color={colors.statusWarning} />
+            <Text style={styles.auditWarnText}>
+              {audit.outcome === 'fonte_ausente'
+                ? `Falta um dos relatórios de ${periodLabel(period)} para conferir o mês.`
+                : `${formatCurrency(Math.abs(audit.diferenca))} ainda sem explicação em ${periodLabel(period)}.`}
+            </Text>
+            <Ionicons name="arrow-forward" size={15} color={colors.statusWarning} />
+          </TouchableOpacity>
+        ) : null}
 
         {/* KPIs do DRE. Sem eles (colaboradora), mostra o aviso de área restrita. */}
         <View style={styles.sectionHeadingRow}>
@@ -635,6 +686,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.primary,
     lineHeight: 17,
+  },
+  saldoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  saldoCol: {
+    flex: 1,
+  },
+  saldoDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    marginHorizontal: 12,
+  },
+  saldoLabel: {
+    fontFamily: typography.fonts.bodySemiBold,
+    fontSize: 8,
+    letterSpacing: 0.6,
+    color: colors.lavenderSubtle,
+  },
+  saldoValue: {
+    fontFamily: typography.fonts.bodyBold,
+    fontSize: 14,
+    color: '#FFFFFF',
+    marginTop: 3,
+  },
+  auditWarnCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.statusWarningBg,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+    padding: 14,
+    marginBottom: 20,
+  },
+  auditWarnText: {
+    flex: 1,
+    fontFamily: typography.fonts.bodyMedium,
+    fontSize: 12,
+    color: colors.graphiteText,
+    lineHeight: 16,
   },
   grid2x2: {
     flexDirection: 'row',

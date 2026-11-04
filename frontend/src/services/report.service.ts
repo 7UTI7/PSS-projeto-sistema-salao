@@ -4,7 +4,7 @@
 // completo — por isso o período vem sempre de utils/period.ts, nunca de uma string
 // "YYYY-MM-DD" montada à mão.
 import { api } from './api';
-import { ApiResponse, CashFlowPoint, FinancialSummary, ReconciliationSummary } from '../types';
+import { ApiResponse, CashFlowPoint, FinancialSummary } from '../types';
 import { periodRange, PeriodKey } from '../utils/period';
 
 export const reportService = {
@@ -19,14 +19,6 @@ export const reportService = {
   /** Fluxo de Caixa (regime de caixa): só lançamentos liquidados, pela data de liquidação. */
   async getCashFlow(period: PeriodKey): Promise<CashFlowPoint[]> {
     const response = await api.get<ApiResponse<CashFlowPoint[]>>('/reports/cash-flow', {
-      params: periodRange(period),
-    });
-    return response.data.data;
-  },
-
-  /** Conciliação: o vendido no Booksy contra o que caiu na conta da InfinitePay. */
-  async getReconciliation(period: PeriodKey): Promise<ReconciliationSummary> {
-    const response = await api.get<ApiResponse<ReconciliationSummary>>('/reports/reconciliation', {
       params: periodRange(period),
     });
     return response.data.data;

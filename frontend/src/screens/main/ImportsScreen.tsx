@@ -1,17 +1,22 @@
-// Importação dos relatórios do Booksy e do extrato da InfinitePay.
+// Importação dos dois relatórios e auditoria do mês.
 //
-// É a porta de entrada dos dados do studio: a dona exporta das duas plataformas e sobe
-// aqui. Cada origem entra de um jeito diferente, de propósito:
-//   Booksy      -> receitas (serviço, profissional, valor bruto e desconto)
-//   InfinitePay -> caixa recebido (Pix e repasses da maquininha, já líquidos de tarifa)
-// Importar as duas não duplica faturamento; o detalhe está em services/import.service.ts.
+// É a porta de entrada dos dados do studio, e o fluxo é uma auditoria, não um upload:
+//   1. os DOIS relatórios são escolhidos e enviados juntos, num só evento;
+//   2. o servidor compara o faturamento do Booksy com as entradas da InfinitePay;
+//   3. se bate, os resultados do mês são liberados;
+//   4. se não bate, a tela barra e pede o motivo da diferença, com um Lançamento Manual
+//      que a zere (pago em dinheiro, taxa retida, gorjeta).
 //
-// O fluxo é: escolher arquivo -> conferir a prévia -> confirmar. A prévia existe porque
-// importar errado mexe no resultado do mês, e desfazer depois dá mais trabalho.
+// Por que os dois juntos: um mês só faz sentido conferido dos dois lados. Importar um de
+// cada vez permitia ver meio mês e concluir que o arquivo tinha sido lido errado.
+//
+// Nenhum número é somado aqui. A diferença, o desfecho e os três saldos vêm do servidor
+// a cada leitura — é a mesma conta que o Painel exibe.
 import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -23,22 +28,18 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { AdminOnlyState, ErrorState } from '../../components/ui/QueryState';
-import {
-  useFilePicker,
-  useImportBatches,
-  usePreviewImport,
-  useProcessImport,
-  useRollbackImport,
-} from '../../hooks/useImports';
-import { useIsAdmin, useReconciliation } from '../../hooks/useReports';
+import { useImportBatches, useRollbackImport } from '../../hooks/useImports';
+import { useAddAuditEntry, useAudit, useAuditFilePicker, useSubmitAudit } from '../../hooks/useAudit';
+import { useIsAdmin } from '../../hooks/useReports';
 import { getApiErrorMessage } from '../../services/api';
 import { ACCEPTED_EXTENSIONS_LABEL } from '../../services/import.service';
+import { AUDIT_REASON_LABELS } from '../../services/audit.service';
 import { DEFAULT_COMMISSION_RATE } from '../../config/studio.config';
 import { formatCurrency, formatDate, formatPercent, parseAmountInput } from '../../utils/formatters';
 import { periodKeyOf, periodLabel } from '../../utils/period';
 import { usePeriodStore } from '../../store/periodStore';
 import { importBatchStatusLabels, importSourceLabels } from '../../utils/labels';
-import type { ImportBatch, ImportPreview, ImportSource, PickedFile } from '../../types';
+import type { AuditReason, AuditSummary, ImportBatch, ImportSource } from '../../types';
 
 interface SourceCard {
   source: ImportSource;
@@ -54,45 +55,53 @@ const SOURCES: SourceCard[] = [
   {
     source: 'booksy',
     title: 'Booksy',
-    subtitle: 'Agendamentos & Comissões',
+    subtitle: 'O que foi atendido',
     icon: 'calendar-outline',
-    tag: 'Receitas',
+    tag: 'Faturamento',
     explanation:
-      'Vira receita: um lançamento por atendimento, com serviço, profissional, valor e desconto.',
-    hint: 'No Booksy: Relatórios → Desempenho do negócio → Exportar (.xlsx). A aba usada é "Lista de agendamentos".',
+      'Diz quanto foi prestado de serviço: um lançamento por atendimento, com serviço, profissional, valor e desconto.',
+    hint: 'No Booksy: Relatórios → Desempenho do negócio → Exportar (.xlsx).',
   },
   {
     source: 'infinitepay',
     title: 'InfinitePay',
-    subtitle: 'Extrato: Pix & Maquininha',
+    subtitle: 'O que entrou na conta',
     icon: 'card-outline',
-    tag: 'Caixa',
+    tag: 'Entradas',
     explanation:
-      'Vira caixa: os Pix recebidos e os repasses da maquininha, que já chegam líquidos de tarifa. O faturamento continua sendo o do Booksy, então a venda não é contada duas vezes.',
+      'Diz quanto de dinheiro entrou: os Pix recebidos e os repasses da maquininha. As retiradas para a sua conta viram o Saldo Retirado.',
     hint: 'No app da InfinitePay: Relatório de movimentações → exportar (.pdf).',
   },
 ];
 
+/** Os motivos na ordem em que aparecem na tela de correção. */
+const REASONS: AuditReason[] = ['dinheiro', 'taxa', 'gorjeta', 'estorno', 'outro'];
+
 export default function ImportsScreen() {
   const isAdmin = useIsAdmin();
-  const { file, pickFile, clearFile } = useFilePicker();
   const period = usePeriodStore((state) => state.period);
   const setPeriod = usePeriodStore((state) => state.setPeriod);
-  const reconciliationQuery = useReconciliation();
-  const reconciliation = reconciliationQuery.data;
-  const [source, setSource] = useState<ImportSource | null>(null);
+
+  const { files, pickFile, clearFiles, ready } = useAuditFilePicker();
   const [commissionPercent, setCommissionPercent] = useState(String(DEFAULT_COMMISSION_RATE * 100));
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  // Formulário de correção: aberto só quando ela decide justificar a diferença.
+  const [reason, setReason] = useState<AuditReason | null>(null);
+  const [entryAmount, setEntryAmount] = useState('');
+  const [entryDescription, setEntryDescription] = useState('');
+  const [entryDirection, setEntryDirection] = useState<'faltou_entrar' | 'entrou_a_mais'>('faltou_entrar');
 
   const batchesQuery = useImportBatches();
-  const previewMutation = usePreviewImport();
-  const processMutation = useProcessImport();
+  const auditQuery = useAudit();
+  const submitMutation = useSubmitAudit();
+  const entryMutation = useAddAuditEntry();
   const rollbackMutation = useRollbackImport();
+
+  const audit = auditQuery.data;
+  const commissionRate = parseAmountInput(commissionPercent) / 100;
 
   /**
    * Período que cada origem já cobre, somando os lotes processados. É o que responde
-   * "onde estão meus dados": os arquivos quase nunca são do mês corrente, e sem isso a
-   * tela do mês errado parecia vazia por defeito de leitura.
+   * "onde estão meus dados": os arquivos quase nunca são do mês corrente.
    */
   const coverage = useMemo(() => {
     const ranges = new Map<ImportSource, { start: string; end: string }>();
@@ -107,88 +116,87 @@ export default function ImportsScreen() {
     return [...ranges.entries()];
   }, [batchesQuery.data]);
 
-  /** O mês selecionado tem dado de alguma origem? (comparação por chave AAAA-MM) */
   const periodCovered = coverage.some(
     ([, range]) => periodKeyOf(range.start) <= period && period <= periodKeyOf(range.end),
   );
 
-  const commissionRate = parseAmountInput(commissionPercent) / 100;
-
-  function resetSelection() {
-    clearFile();
-    setSource(null);
-    setPreview(null);
+  function resetEntryForm() {
+    setReason(null);
+    setEntryAmount('');
+    setEntryDescription('');
+    setEntryDirection('faltou_entrar');
   }
 
-  /** Escolher o arquivo e já pedir a prévia: são uma única ação para a dona. */
-  async function handlePick(selected: ImportSource) {
+  async function handlePick(source: ImportSource) {
     try {
-      const picked = await pickFile(selected);
-      if (!picked) return;
-
-      setSource(selected);
-      setPreview(null);
-      requestPreview(selected, picked);
+      await pickFile(source);
     } catch (error) {
       Alert.alert('Erro ao abrir o arquivo', getApiErrorMessage(error));
     }
   }
 
-  function requestPreview(selected: ImportSource, picked: PickedFile) {
-    previewMutation.mutate(
-      { source: selected, file: picked, defaultCommissionRate: commissionRate },
+  /** Envia os dois de uma vez e posiciona o mês no que os arquivos cobrem. */
+  function handleSubmit() {
+    if (!files.booksy || !files.infinitepay) return;
+
+    submitMutation.mutate(
       {
-        onSuccess: setPreview,
-        onError: (error) => {
-          setPreview(null);
-          Alert.alert('Não foi possível ler o arquivo', getApiErrorMessage(error));
+        booksy: files.booksy,
+        infinitepay: files.infinitepay,
+        defaultCommissionRate: commissionRate,
+      },
+      {
+        onSuccess: (result) => {
+          clearFiles();
+          resetEntryForm();
+
+          // Os arquivos quase nunca são do mês corrente, e o app abre no mês corrente:
+          // sem mover o seletor, a auditoria "não aparece" e parece que nada foi lido.
+          const target = result.infinitepay.periodEnd ?? result.booksy.periodEnd;
+          if (target) setPeriod(periodKeyOf(target));
+
+          Alert.alert('Relatórios importados', summarizeSubmission(result.audits));
         },
-      }
+        onError: (error) => Alert.alert('Falha na importação', getApiErrorMessage(error)),
+      },
     );
   }
 
-  function handleConfirm() {
-    if (!file || !source || !preview) return;
-
-    if (preview.alreadyImported) {
-      Alert.alert(
-        'Arquivo já importado',
-        'Este mesmo arquivo já foi processado antes. Desfaça o lote no histórico antes de reenviar.'
-      );
+  /** O Lançamento Manual que zera a diferença do mês. */
+  function handleAddEntry() {
+    if (!reason) return;
+    const amount = parseAmountInput(entryAmount);
+    if (amount <= 0) {
+      Alert.alert('Valor inválido', 'Informe um valor maior que zero.');
+      return;
+    }
+    if (entryDescription.trim().length === 0) {
+      Alert.alert('Falta a descrição', 'Escreva o que aconteceu, para você lembrar depois.');
       return;
     }
 
-    processMutation.mutate(
-      { source, file, defaultCommissionRate: commissionRate },
+    entryMutation.mutate(
+      {
+        period,
+        entry: {
+          amount,
+          reason,
+          description: entryDescription.trim(),
+          ...(reason === 'outro' ? { direction: entryDirection } : {}),
+        },
+      },
       {
         onSuccess: (result) => {
-          resetSelection();
-          // O arquivo quase nunca é do mês corrente, e o app abre no mês corrente: sem
-          // mover o seletor, a importação "não aparece" e parece que nada foi lido.
-          if (result.periodEnd) setPeriod(periodKeyOf(result.periodEnd));
+          resetEntryForm();
           Alert.alert(
-            'Importação concluída',
-            [
-              `${result.importedCount} lançamento(s) criado(s).`,
-              result.periodStart && result.periodEnd
-                ? `Período do arquivo: ${formatDate(result.periodStart)} a ${formatDate(result.periodEnd)}.`
-                : null,
-              result.duplicateCount > 0
-                ? `${result.duplicateCount} já existiam e foram ignorados.`
-                : null,
-              result.skipped.length > 0
-                ? `${result.skipped.length} linha(s) ignorada(s) — veja o histórico.`
-                : null,
-              result.createdCategories.length > 0
-                ? `Categorias criadas: ${result.createdCategories.join(', ')}.`
-                : null,
-            ]
-              .filter(Boolean)
-              .join('\n')
+            result.outcome === 'aprovada' ? 'Auditoria fechada' : 'Lançamento registrado',
+            result.outcome === 'aprovada'
+              ? 'O faturamento do Booksy agora bate com o que entrou na conta.'
+              : `Ainda faltam ${formatCurrency(Math.abs(result.diferenca))} para fechar.`,
           );
         },
-        onError: (error) => Alert.alert('Falha na importação', getApiErrorMessage(error)),
-      }
+        onError: (error) => Alert.alert('Não foi possível lançar', getApiErrorMessage(error)),
+      },
     );
   }
 
@@ -208,25 +216,25 @@ export default function ImportsScreen() {
               onError: (error) => Alert.alert('Erro', getApiErrorMessage(error)),
             }),
         },
-      ]
+      ],
     );
   }
 
   if (!isAdmin) {
     return (
       <View style={styles.screen}>
-        <StudioTopHeader subtitleTag="IMPORTAÇÃO" />
+        <StudioTopHeader subtitleTag="AUDITORIA" />
         <AdminOnlyState />
       </View>
     );
   }
 
   const batches = batchesQuery.data ?? [];
-  const busy = previewMutation.isPending || processMutation.isPending;
+  const busy = submitMutation.isPending;
 
   return (
     <View style={styles.screen}>
-      <StudioTopHeader subtitleTag="IMPORTAÇÃO" />
+      <StudioTopHeader subtitleTag="AUDITORIA" />
 
       <ScrollView
         style={styles.container}
@@ -234,19 +242,72 @@ export default function ImportsScreen() {
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={batchesQuery.isRefetching}
-            onRefresh={() => void batchesQuery.refetch()}
+            refreshing={batchesQuery.isRefetching || auditQuery.isRefetching}
+            onRefresh={() => {
+              void batchesQuery.refetch();
+              void auditQuery.refetch();
+            }}
             tintColor={colors.primary}
           />
         }
       >
         <View style={styles.pageHeader}>
-          <Text style={styles.pageTitle}>Importar Relatórios</Text>
+          <Text style={styles.pageTitle}>Conferir o mês</Text>
           <Text style={styles.pageDesc}>
-            Suba o que você já exporta do Booksy e da InfinitePay. O sistema transforma em
-            lançamentos, calcula taxas e comissões e monta o resultado do mês.
+            Suba os dois relatórios juntos. O sistema confere se o que foi atendido no
+            Booksy bate com o que entrou na conta da InfinitePay, e só libera os
+            resultados quando a conta fecha.
           </Text>
         </View>
+
+        {/* ===================== 1. OS DOIS ARQUIVOS ===================== */}
+        {SOURCES.map((card) => {
+          const picked = files[card.source];
+          return (
+            <View key={card.source} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.serviceTitleRow}>
+                  <View style={styles.serviceIconBox}>
+                    <Ionicons name={card.icon} size={20} color={colors.primary} />
+                  </View>
+                  <View style={styles.serviceTitleCol}>
+                    <Text style={styles.serviceName}>{card.title}</Text>
+                    <Text style={styles.serviceSub}>{card.subtitle}</Text>
+                  </View>
+                </View>
+                <View style={styles.serviceTag}>
+                  <Text style={styles.serviceTagText}>{card.tag}</Text>
+                </View>
+              </View>
+
+              <Text style={styles.explanation}>{card.explanation}</Text>
+
+              <TouchableOpacity
+                style={[styles.dropzone, picked && styles.dropzoneSelected]}
+                activeOpacity={0.8}
+                disabled={busy}
+                onPress={() => void handlePick(card.source)}
+              >
+                <View style={styles.uploadIconCircle}>
+                  <Ionicons
+                    name={picked ? 'document-text' : 'cloud-upload-outline'}
+                    size={24}
+                    color={colors.primary}
+                  />
+                </View>
+
+                <Text style={styles.uploadTitle} numberOfLines={2}>
+                  {picked ? picked.name : `Selecionar arquivo (${ACCEPTED_EXTENSIONS_LABEL[card.source]})`}
+                </Text>
+                <Text style={styles.uploadSub}>
+                  {picked?.size
+                    ? `${(picked.size / 1024).toFixed(0)} KB · toque para trocar`
+                    : card.hint}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
 
         {/* Comissão padrão: o Booksy não exporta o percentual, então vem daqui. */}
         <View style={styles.card}>
@@ -278,184 +339,231 @@ export default function ImportsScreen() {
           </View>
           <Text style={styles.fieldHelp}>
             Aplicada a cada atendimento importado do Booksy, que não traz o percentual no
-            arquivo. Dá para editar lançamento por lançamento depois.
+            arquivo. Não entra na conta da auditoria: comissão é repasse, não deixa de ser
+            dinheiro que entrou.
           </Text>
         </View>
 
-        {SOURCES.map((card) => {
-          const isSelected = source === card.source;
-          return (
-            <View key={card.source} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <View style={styles.serviceTitleRow}>
-                  <View style={styles.serviceIconBox}>
-                    <Ionicons name={card.icon} size={20} color={colors.primary} />
-                  </View>
-                  <View style={styles.serviceTitleCol}>
-                    <Text style={styles.serviceName}>{card.title}</Text>
-                    <Text style={styles.serviceSub}>{card.subtitle}</Text>
-                  </View>
-                </View>
-                <View style={styles.serviceTag}>
-                  <Text style={styles.serviceTagText}>{card.tag}</Text>
-                </View>
-              </View>
+        <TouchableOpacity
+          style={[styles.primaryActionBtn, (!ready || busy) && styles.btnDisabled]}
+          activeOpacity={0.85}
+          disabled={!ready || busy}
+          onPress={handleSubmit}
+        >
+          {busy ? (
+            <ActivityIndicator color="#FFFFFF" size="small" />
+          ) : (
+            <>
+              <Ionicons name="git-compare" size={18} color="#FFFFFF" />
+              <Text style={styles.primaryActionText}>Conferir e importar</Text>
+            </>
+          )}
+        </TouchableOpacity>
 
-              <Text style={styles.explanation}>{card.explanation}</Text>
-
-              <TouchableOpacity
-                style={[styles.dropzone, isSelected && styles.dropzoneSelected]}
-                activeOpacity={0.8}
-                disabled={busy}
-                onPress={() => handlePick(card.source)}
-              >
-                <View style={styles.uploadIconCircle}>
-                  <Ionicons
-                    name={isSelected && file ? 'document-text' : 'cloud-upload-outline'}
-                    size={24}
-                    color={colors.primary}
-                  />
-                </View>
-
-                <Text style={styles.uploadTitle} numberOfLines={2}>
-                  {isSelected && file
-                    ? file.name
-                    : `Selecionar arquivo (${ACCEPTED_EXTENSIONS_LABEL[card.source]})`}
-                </Text>
-                <Text style={styles.uploadSub}>
-                  {isSelected && file?.size
-                    ? `${(file.size / 1024).toFixed(0)} KB · toque para trocar`
-                    : card.hint}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          );
-        })}
-
-        {previewMutation.isPending ? (
-          <View style={styles.loadingCard}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={styles.loadingText}>Lendo a planilha...</Text>
-          </View>
+        {!ready ? (
+          <Text style={styles.fieldHelp}>
+            Escolha os dois arquivos para conferir. O mês só fecha com os dois lados.
+          </Text>
         ) : null}
 
-        {/* PRÉVIA: o que entraria se confirmar. Nada foi gravado ainda. */}
-        {preview && source ? (
-          <View style={[styles.card, styles.previewCard]}>
-            <View style={styles.previewHeader}>
-              <View style={styles.previewTitleRow}>
-                <Ionicons name="eye-outline" size={18} color={colors.primary} />
-                <Text style={styles.previewTitle}>Prévia da importação</Text>
-              </View>
-              <Text style={styles.previewSource}>{importSourceLabels[preview.source]}</Text>
-            </View>
+        {/* ===================== 2. A AUDITORIA DO MÊS ===================== */}
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.summaryTitleRow}>
+            <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
+            <Text style={styles.summaryTitle}>Auditoria de {periodLabel(period)}</Text>
+          </View>
+        </View>
 
-            {preview.alreadyImported ? (
-              <View style={styles.warnBanner}>
-                <Ionicons name="alert-circle" size={16} color={colors.statusWarning} />
-                <Text style={styles.warnText}>
-                  Este arquivo já foi importado antes. Desfaça o lote no histórico para reenviar.
-                </Text>
-              </View>
-            ) : null}
+        {auditQuery.isPending ? (
+          <ActivityIndicator color={colors.primary} style={styles.historyLoader} />
+        ) : auditQuery.isError ? (
+          <ErrorState error={auditQuery.error} onRetry={auditQuery.refetch} />
+        ) : audit ? (
+          <View style={styles.card}>
+            <AuditVerdict audit={audit} />
 
+            {/* A comparação, sempre visível: é o que explica o veredito. */}
             <View style={styles.previewGrid}>
               <View style={styles.previewBox}>
-                <Text style={styles.previewLabel}>Linhas a importar</Text>
-                <Text style={styles.previewValue}>{preview.rowCount}</Text>
+                <Text style={styles.previewLabel}>Atendido (Booksy)</Text>
+                <Text style={styles.previewValue}>{formatCurrency(audit.faturamentoBooksy)}</Text>
               </View>
               <View style={styles.previewBox}>
-                <Text style={styles.previewLabel}>
-                  {preview.source === 'booksy' ? 'Receita bruta' : 'Total movimentado'}
-                </Text>
-                <Text style={styles.previewValue}>{formatCurrency(preview.totals.grossAmount)}</Text>
+                <Text style={styles.previewLabel}>Entrou (InfinitePay)</Text>
+                <Text style={styles.previewValue}>{formatCurrency(audit.entradasInfinitepay)}</Text>
               </View>
             </View>
 
-            {preview.source === 'booksy' ? (
+            {audit.ajusteManual !== 0 ? (
               <View style={styles.previewGrid}>
                 <View style={styles.previewBox}>
-                  <Text style={styles.previewLabel}>Comissões</Text>
-                  <Text style={styles.previewValue}>
-                    {formatCurrency(preview.totals.commissionAmount)}
-                  </Text>
+                  <Text style={styles.previewLabel}>Justificado à mão</Text>
+                  <Text style={styles.previewValue}>{formatCurrency(audit.ajusteManual)}</Text>
+                </View>
+                <View style={styles.previewBox}>
+                  <Text style={styles.previewLabel}>Ainda a explicar</Text>
+                  <Text style={styles.previewValue}>{formatCurrency(audit.diferenca)}</Text>
+                </View>
+              </View>
+            ) : null}
+
+            {/* Os três saldos: só fazem sentido com a conta fechada. */}
+            {audit.outcome === 'aprovada' ? (
+              <>
+                <Text style={styles.fieldHelp}>Resultado do mês</Text>
+                <View style={styles.previewGrid}>
+                  <View style={styles.previewBox}>
+                    <Text style={styles.previewLabel}>Saldo bruto</Text>
+                    <Text style={styles.previewValue}>{formatCurrency(audit.saldoBruto)}</Text>
+                  </View>
+                  <View style={styles.previewBox}>
+                    <Text style={styles.previewLabel}>Saldo retirado</Text>
+                    <Text style={styles.previewValue}>{formatCurrency(audit.saldoRetirado)}</Text>
+                  </View>
                 </View>
                 <View style={[styles.previewBox, styles.previewBoxHighlight]}>
-                  <Text style={styles.previewLabel}>Líquido do studio</Text>
+                  <Text style={styles.previewLabel}>Saldo líquido · ainda na conta</Text>
                   <Text style={[styles.previewValue, { color: colors.violetRoyal }]}>
-                    {formatCurrency(preview.totals.studioNetProfit)}
+                    {formatCurrency(audit.saldoLiquido)}
                   </Text>
                 </View>
-              </View>
+              </>
             ) : null}
 
-            {preview.periodStart && preview.periodEnd ? (
-              <Text style={styles.previewPeriod}>
-                Período do arquivo: {formatDate(preview.periodStart)} a{' '}
-                {formatDate(preview.periodEnd)}
-              </Text>
-            ) : null}
-
-            {preview.missingCategories.length > 0 ? (
-              <View style={styles.infoBanner}>
-                <Ionicons name="pricetags-outline" size={15} color={colors.primary} />
-                <Text style={styles.infoText}>
-                  Serão criadas no catálogo: {preview.missingCategories.join(', ')}.
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Linhas ignoradas com o motivo: é onde se descobre nome de profissional
-                fora do cadastro ou coluna que mudou no relatório da plataforma. */}
-            {preview.skipped.length > 0 ? (
+            {/* Os ajustes já lançados, para ela ver o que justificou. */}
+            {audit.adjustments.length > 0 ? (
               <View style={styles.skippedBox}>
                 <Text style={styles.skippedTitle}>
-                  {preview.skipped.length} linha(s) será(ão) ignorada(s)
+                  {audit.adjustments.length} lançamento(s) manual(is) neste mês
                 </Text>
-                {preview.skipped.slice(0, 5).map((row) => (
-                  <Text key={`${row.line}-${row.reason}`} style={styles.skippedItem}>
-                    • Linha {row.line}: {row.reason}
+                {audit.adjustments.map((entry) => (
+                  <Text key={entry.id} style={styles.skippedItem}>
+                    • {formatCurrency(entry.signedAmount)} —{' '}
+                    {entry.reason ? AUDIT_REASON_LABELS[entry.reason].label : 'Ajuste'}:{' '}
+                    {entry.description}
                   </Text>
                 ))}
-                {preview.skipped.length > 5 ? (
-                  <Text style={styles.skippedItem}>
-                    • ... e outras {preview.skipped.length - 5}.
-                  </Text>
-                ) : null}
               </View>
             ) : null}
 
-            <View style={styles.previewActions}>
-              <TouchableOpacity
-                style={[
-                  styles.primaryActionBtn,
-                  (processMutation.isPending || preview.alreadyImported || preview.rowCount === 0) &&
-                    styles.btnDisabled,
-                ]}
-                activeOpacity={0.85}
-                disabled={processMutation.isPending || preview.alreadyImported || preview.rowCount === 0}
-                onPress={handleConfirm}
-              >
-                {processMutation.isPending ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
-                    <Text style={styles.primaryActionText}>
-                      Confirmar e importar {preview.rowCount} lançamento(s)
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
+            {/* ========== 3. A CORREÇÃO, só quando faz sentido ========== */}
+            {audit.outcome === 'divergente' ? (
+              reason === null ? (
+                <TouchableOpacity
+                  style={styles.primaryActionBtn}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    // Já vem preenchido com o que falta: é o caso comum.
+                    setEntryAmount(Math.abs(audit.diferenca).toFixed(2).replace('.', ','));
+                    setEntryDirection(audit.diferenca > 0 ? 'faltou_entrar' : 'entrou_a_mais');
+                    setReason('dinheiro');
+                  }}
+                >
+                  <Ionicons name="create-outline" size={18} color="#FFFFFF" />
+                  <Text style={styles.primaryActionText}>Explicar a diferença</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.correctionBox}>
+                  <Text style={styles.fieldLabel}>O QUE ACONTECEU?</Text>
+                  {REASONS.map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={[styles.reasonRow, reason === option && styles.reasonRowActive]}
+                      activeOpacity={0.8}
+                      onPress={() => setReason(option)}
+                    >
+                      <Ionicons
+                        name={reason === option ? 'radio-button-on' : 'radio-button-off'}
+                        size={18}
+                        color={reason === option ? colors.primary : colors.graphiteMuted}
+                      />
+                      <View style={styles.reasonCol}>
+                        <Text style={styles.reasonLabel}>{AUDIT_REASON_LABELS[option].label}</Text>
+                        <Text style={styles.reasonHelp}>{AUDIT_REASON_LABELS[option].help}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
 
-              <TouchableOpacity
-                style={styles.secondaryActionBtn}
-                activeOpacity={0.8}
-                onPress={resetSelection}
-              >
-                <Text style={styles.secondaryActionText}>Descartar</Text>
-              </TouchableOpacity>
-            </View>
+                  {/* Só "outro" pergunta a direção: os outros motivos já a determinam. */}
+                  {reason === 'outro' ? (
+                    <>
+                      <Text style={[styles.fieldLabel, styles.fieldSpacing]}>DE QUE LADO?</Text>
+                      <View style={styles.directionRow}>
+                        {([
+                          ['faltou_entrar', 'Faltou entrar'],
+                          ['entrou_a_mais', 'Entrou a mais'],
+                        ] as const).map(([value, label]) => (
+                          <TouchableOpacity
+                            key={value}
+                            style={[
+                              styles.directionBtn,
+                              entryDirection === value && styles.directionBtnActive,
+                            ]}
+                            activeOpacity={0.8}
+                            onPress={() => setEntryDirection(value)}
+                          >
+                            <Text
+                              style={[
+                                styles.directionText,
+                                entryDirection === value && styles.directionTextActive,
+                              ]}
+                            >
+                              {label}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </>
+                  ) : null}
+
+                  <Text style={[styles.fieldLabel, styles.fieldSpacing]}>VALOR (R$)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={entryAmount}
+                    onChangeText={setEntryAmount}
+                    keyboardType="decimal-pad"
+                    placeholder="0,00"
+                    placeholderTextColor={colors.graphiteMuted}
+                  />
+
+                  <Text style={[styles.fieldLabel, styles.fieldSpacing]}>DESCRIÇÃO</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={entryDescription}
+                    onChangeText={setEntryDescription}
+                    placeholder="Ex.: cliente pagou a unha em dinheiro"
+                    placeholderTextColor={colors.graphiteMuted}
+                    maxLength={240}
+                  />
+
+                  <View style={styles.previewActions}>
+                    <TouchableOpacity
+                      style={[styles.primaryActionBtn, entryMutation.isPending && styles.btnDisabled]}
+                      activeOpacity={0.85}
+                      disabled={entryMutation.isPending}
+                      onPress={handleAddEntry}
+                    >
+                      {entryMutation.isPending ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <>
+                          <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                          <Text style={styles.primaryActionText}>Lançar e fechar</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.secondaryActionBtn}
+                      activeOpacity={0.8}
+                      onPress={resetEntryForm}
+                    >
+                      <Text style={styles.secondaryActionText}>Cancelar</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )
+            ) : null}
           </View>
         ) : null}
 
@@ -482,120 +590,6 @@ export default function ImportsScreen() {
                 </Text>
               </View>
             ) : null}
-          </View>
-        ) : null}
-
-        {/* CONCILIAÇÃO: o vendido no Booksy contra o que caiu na conta da InfinitePay.
-            É agregada por período, não linha a linha: o extrato não tem coluna de taxa e
-            o repasse da maquininha é um lote diário, não uma linha por venda. Por isso a
-            taxa aqui é derivada da diferença, e aparece marcada como estimada. */}
-        <View style={styles.sectionHeaderRow}>
-          <View style={styles.summaryTitleRow}>
-            <Ionicons name="git-compare-outline" size={18} color={colors.primary} />
-            <Text style={styles.summaryTitle}>Resumo da conciliação</Text>
-          </View>
-        </View>
-
-        {reconciliationQuery.isPending ? (
-          <ActivityIndicator color={colors.primary} style={styles.historyLoader} />
-        ) : reconciliationQuery.isError ? (
-          <ErrorState error={reconciliationQuery.error} onRetry={reconciliationQuery.refetch} />
-        ) : reconciliation ? (
-          <View style={styles.card}>
-            <View style={styles.previewHeader}>
-              <View style={styles.previewTitleRow}>
-                <Ionicons name="calendar-outline" size={16} color={colors.primary} />
-                <Text style={styles.previewTitle}>{periodLabel(period)}</Text>
-              </View>
-              <Text style={styles.previewSource}>Booksy × InfinitePay</Text>
-            </View>
-
-            {reconciliation.qtdServicos === 0 && reconciliation.liquidoReceber === 0 ? (
-              <Text style={styles.historyEmpty}>
-                Importe seus relatórios para ver os números deste mês.
-              </Text>
-            ) : (
-              <>
-                <View style={styles.previewGrid}>
-                  <View style={styles.previewBox}>
-                    <Text style={styles.previewLabel}>Vendas brutas (Booksy)</Text>
-                    <Text style={styles.previewValue}>
-                      {formatCurrency(reconciliation.vendasBrutas)}
-                    </Text>
-                  </View>
-                  <View style={styles.previewBox}>
-                    <Text style={styles.previewLabel}>Serviços</Text>
-                    <Text style={styles.previewValue}>{reconciliation.qtdServicos}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.previewGrid}>
-                  <View style={styles.previewBox}>
-                    <Text style={styles.previewLabel}>Recebido por Pix</Text>
-                    <Text style={styles.previewValue}>
-                      {formatCurrency(reconciliation.recebidoPix)}
-                    </Text>
-                  </View>
-                  <View style={styles.previewBox}>
-                    <Text style={styles.previewLabel}>Repasses da maquininha</Text>
-                    <Text style={styles.previewValue}>
-                      {formatCurrency(reconciliation.recebidoCartao)}
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.previewGrid}>
-                  <View style={styles.previewBox}>
-                    <Text style={styles.previewLabel}>Taxas (estimadas)</Text>
-                    <Text style={styles.previewValue}>
-                      {reconciliation.taxas === null
-                        ? '--'
-                        : formatCurrency(reconciliation.taxas)}
-                    </Text>
-                  </View>
-                  <View style={[styles.previewBox, styles.previewBoxHighlight]}>
-                    <Text style={styles.previewLabel}>Líquido recebido</Text>
-                    <Text style={[styles.previewValue, { color: colors.violetRoyal }]}>
-                      {formatCurrency(reconciliation.liquidoReceber)}
-                    </Text>
-                  </View>
-                </View>
-
-                {reconciliation.descontos > 0 ? (
-                  <Text style={styles.previewPeriod}>
-                    Descontos no período: {formatCurrency(reconciliation.descontos)} — não
-                    geram dinheiro a receber.
-                  </Text>
-                ) : null}
-
-                <Text style={styles.fieldHelp}>
-                  {reconciliation.taxaMediaEfetiva === null
-                    ? 'A taxa só é calculada com as duas origens importadas no mesmo período.'
-                    : `Taxa média efetiva de ${formatPercent(reconciliation.taxaMediaEfetiva)}, derivada da diferença entre o vendido e o recebido. O extrato da InfinitePay não traz a taxa, e o repasse da maquininha já chega líquido.`}
-                </Text>
-
-                {reconciliation.divergencias.length === 0 ? (
-                  <View style={styles.infoBanner}>
-                    <Ionicons name="checkmark-circle-outline" size={15} color={colors.primary} />
-                    <Text style={styles.infoText}>
-                      Sem divergências: o que foi vendido bate com o que caiu na conta.
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.skippedBox}>
-                    <Text style={styles.skippedTitle}>
-                      {reconciliation.divergencias.length} divergência(s) ·{' '}
-                      {formatCurrency(reconciliation.totalDivergencias)}
-                    </Text>
-                    {reconciliation.divergencias.map((item) => (
-                      <Text key={item.tipo} style={styles.skippedItem}>
-                        • {formatCurrency(item.valor)} — {item.descricao}
-                      </Text>
-                    ))}
-                  </View>
-                )}
-              </>
-            )}
           </View>
         ) : null}
 
@@ -698,6 +692,71 @@ function batchStatusTextStyle(status: ImportBatch['status']) {
   if (status === 'failed') return { color: colors.statusError };
   if (status === 'rolled_back') return { color: colors.graphiteMuted };
   return { color: colors.statusWarning };
+}
+
+
+/**
+ * O veredito em uma frase, pelo desfecho que o servidor mandou.
+ *
+ * `fonte_ausente` tem texto próprio de propósito: não é divergência a justificar, é
+ * arquivo faltando. Oferecer "explique a diferença" aí pediria para ela justificar o
+ * valor inteiro do extrato, e um ajuste desse tamanho falsearia a auditoria.
+ */
+function AuditVerdict({ audit }: { audit: AuditSummary }) {
+  if (audit.outcome === 'aprovada') {
+    return (
+      <View style={styles.infoBanner}>
+        <Ionicons name="checkmark-circle" size={16} color={colors.primary} />
+        <Text style={styles.infoText}>
+          Conta fechada: o que foi atendido bate com o que entrou na conta
+          {audit.approvedAt ? ` (conferido em ${formatDate(audit.approvedAt)})` : ''}.
+        </Text>
+      </View>
+    );
+  }
+
+  if (audit.outcome === 'fonte_ausente') {
+    const faltando =
+      audit.fonteFaltante === 'ambas'
+        ? 'os dois relatórios'
+        : audit.fonteFaltante === 'booksy'
+          ? 'o relatório do Booksy'
+          : 'o extrato da InfinitePay';
+    return (
+      <View style={styles.warnBanner}>
+        <Ionicons name="document-attach-outline" size={16} color={colors.statusWarning} />
+        <Text style={styles.warnText}>
+          Falta {faltando} deste mês para conferir. Veja em &quot;Períodos importados&quot; de
+          que mês é cada arquivo que já entrou — pode ser só o mês selecionado.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.warnBanner}>
+      <Ionicons name="alert-circle" size={16} color={colors.statusWarning} />
+      <Text style={styles.warnText}>
+        {audit.diferenca > 0
+          ? `Faltam ${formatCurrency(audit.diferenca)} para fechar: foi atendido mais do que entrou na conta.`
+          : `Sobram ${formatCurrency(Math.abs(audit.diferenca))}: entrou na conta mais do que foi atendido.`}{' '}
+        Diga o motivo para liberar os resultados do mês.
+      </Text>
+    </View>
+  );
+}
+
+/** Uma linha por mês tocado pela submissão, para o alerta de conclusão. */
+function summarizeSubmission(audits: AuditSummary[]): string {
+  if (audits.length === 0) return 'Arquivos importados.';
+
+  return audits
+    .map((item) => {
+      if (item.outcome === 'aprovada') return `${item.period}: conta fechada.`;
+      if (item.outcome === 'fonte_ausente') return `${item.period}: falta o outro relatório.`;
+      return `${item.period}: faltam ${formatCurrency(Math.abs(item.diferenca))} a explicar.`;
+    })
+    .join('\n');
 }
 
 const styles = StyleSheet.create({
@@ -1166,5 +1225,75 @@ const styles = StyleSheet.create({
     color: colors.graphiteText,
     marginTop: 4,
     lineHeight: 17,
+  },
+  correctionBox: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: colors.surfaceContainer,
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: borderRadius.md,
+  },
+  reasonRowActive: {
+    backgroundColor: colors.surfaceContainer,
+  },
+  reasonCol: {
+    flex: 1,
+  },
+  reasonLabel: {
+    fontFamily: typography.fonts.bodySemiBold,
+    fontSize: 13,
+    color: colors.graphiteText,
+  },
+  reasonHelp: {
+    fontFamily: typography.fonts.body,
+    fontSize: 11,
+    color: colors.graphiteMuted,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  directionRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  directionBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.surfaceContainer,
+    alignItems: 'center',
+  },
+  directionBtnActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surfaceContainer,
+  },
+  directionText: {
+    fontFamily: typography.fonts.bodyMedium,
+    fontSize: 12,
+    color: colors.graphiteMuted,
+  },
+  directionTextActive: {
+    color: colors.primary,
+  },
+  fieldSpacing: {
+    marginTop: 16,
+  },
+  textInput: {
+    backgroundColor: colors.surfaceCanvas,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderWhisper,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontFamily: typography.fonts.body,
+    fontSize: 13,
+    color: colors.graphiteText,
   },
 });

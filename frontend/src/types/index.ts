@@ -140,41 +140,77 @@ export interface CashFlowPoint {
   amount: number;
 }
 
-export type DivergenceKind =
-  | 'sem_booksy'
-  | 'sem_infinitepay'
-  | 'recebido_acima_do_vendido'
-  | 'entrada_fora_de_venda'
-  | 'residuo';
+// ---------------------------------------------------------------------------
+// Auditoria Booksy x InfinitePay
+// ---------------------------------------------------------------------------
 
-export interface ReconciliationDivergence {
-  tipo: DivergenceKind;
-  descricao: string;
-  valor: number;
+/**
+ * - `aprovada`      a diferença é zero. Libera os resultados.
+ * - `divergente`    as duas fontes têm dado no mês e não fecham. Pede o motivo.
+ * - `fonte_ausente` falta um dos dois arquivos no mês. NÃO pede motivo: o que falta é o
+ *                   arquivo, e zerar isso com um ajuste seria falsear a auditoria.
+ */
+export type AuditOutcome = 'aprovada' | 'divergente' | 'fonte_ausente';
+
+/** O motivo decide o sinal do ajuste e se ele entra no DRE; quem resolve é o servidor. */
+export type AuditReason = 'dinheiro' | 'taxa' | 'gorjeta' | 'estorno' | 'outro';
+
+/** `faltou_entrar` soma na comparação; `entrou_a_mais` subtrai. */
+export type AuditDirection = 'faltou_entrar' | 'entrou_a_mais';
+
+export interface AuditAdjustment {
+  id: string;
+  occurredAt: string;
+  description: string;
+  amount: number;
+  reason: AuditReason | null;
+  direction: AuditDirection;
+  /** Valor com sinal, como entra na equação da auditoria. */
+  signedAmount: number;
+  countsInDre: boolean;
 }
 
 /**
- * Conciliação do período (GET /reports/reconciliation): o vendido no Booksy contra o
- * recebido na InfinitePay.
+ * Estado da auditoria de um mês (GET /audits?period=AAAA-MM).
  *
- * `taxas` e `taxaMediaEfetiva` são DERIVADOS da diferença entre os dois lados, não lidos
- * do extrato — ele não tem coluna de taxa e o repasse da maquininha já chega líquido.
- * Vêm `null` quando falta uma das duas origens no período, e nesse caso a divergência
- * diz qual arquivo está faltando.
+ * A equação: faturamentoBooksy − entradasInfinitepay − ajusteManual = diferenca.
+ * Tudo é recalculado no servidor a cada leitura — nada é somado aqui.
  */
-export interface ReconciliationSummary {
-  vendasBrutas: number;
-  descontos: number;
-  vendasLiquidas: number;
-  qtdServicos: number;
-  recebidoPix: number;
-  recebidoCartao: number;
-  outrasEntradas: number;
-  liquidoReceber: number;
-  taxas: number | null;
-  taxaMediaEfetiva: number | null;
-  divergencias: ReconciliationDivergence[];
-  totalDivergencias: number;
+export interface AuditSummary {
+  period: string;
+  outcome: AuditOutcome;
+  /** Líquido: bruto − descontos. O desconto é cortesia e nunca ia entrar na conta. */
+  faturamentoBooksy: number;
+  entradasInfinitepay: number;
+  ajusteManual: number;
+  diferenca: number;
+  temBooksy: boolean;
+  temInfinitepay: boolean;
+  fonteFaltante: 'booksy' | 'infinitepay' | 'ambas' | null;
+  adjustments: AuditAdjustment[];
+  /** Entradas consolidadas: o que de fato entrou, já explicado. */
+  saldoBruto: number;
+  /** O que a titular tirou da conta da InfinitePay no mês. */
+  saldoRetirado: number;
+  /** saldoBruto − saldoRetirado: o que ainda está na conta. */
+  saldoLiquido: number;
+  approvedAt: string | null;
+}
+
+/** Resposta de POST /audits: os dois lotes e a auditoria de cada mês tocado. */
+export interface AuditSubmitResult {
+  booksy: ImportResult;
+  infinitepay: ImportResult;
+  audits: AuditSummary[];
+}
+
+export interface AuditEntryInput {
+  amount: number;
+  reason: AuditReason;
+  description: string;
+  /** Só obrigatório quando o motivo é "outro". */
+  direction?: AuditDirection;
+  type?: TransactionType;
 }
 
 // ---------------------------------------------------------------------------

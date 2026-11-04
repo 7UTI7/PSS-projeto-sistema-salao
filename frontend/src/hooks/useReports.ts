@@ -38,14 +38,3 @@ export function useCashFlowReport() {
     enabled: isAdmin,
   });
 }
-
-export function useReconciliation() {
-  const period = usePeriodStore((state) => state.period);
-  const isAdmin = useIsAdmin();
-
-  return useQuery({
-    queryKey: queryKeys.reports.reconciliation(period),
-    queryFn: () => reportService.getReconciliation(period),
-    enabled: isAdmin,
-  });
-}

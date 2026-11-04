@@ -12,9 +12,5 @@ const controller = new ReportController();
 router.use(authMiddleware, passwordPolicyMiddleware, rbacMiddleware('admin'));
 router.get('/dre', asyncHandler((request, response) => controller.dre(request, response)));
 router.get('/cash-flow', asyncHandler((request, response) => controller.cashFlow(request, response)));
-router.get(
-  '/reconciliation',
-  asyncHandler((request, response) => controller.reconciliation(request, response)),
-);
 
 export default router;
