@@ -105,6 +105,40 @@ describe('readCsv', () => {
     const table = readCsv(Buffer.from('a,"diz ""oi""",c\n', 'utf8'), 'x.csv');
     expect(table.rows[0]).toEqual(['a', 'diz "oi"', 'c']);
   });
+
+  describe('encodings e cabeçalhos do extrato da InfinitePay', () => {
+    const CSV = 'Data;Hora;Tipo de transacao;Nome;Detalhe;Valor (R$)\r\n'
+      + '01/10/2026;10:15;Pix;Pix MARIA SILVA;Recebido;90,00\r\n';
+
+    const variants: Array<[string, Buffer]> = [
+      ['UTF-8 com BOM', Buffer.from('\uFEFF' + CSV, 'utf8')],
+      ['UTF-8 sem BOM', Buffer.from(CSV, 'utf8')],
+      ['BOM corrompido (ï»¿)', Buffer.from(Buffer.from('\uFEFF' + CSV, 'utf8').toString('latin1'), 'utf8')],
+      ['Windows-1252', Buffer.from(CSV.replace('transacao', 'transação'), 'latin1')],
+      ['UTF-16 LE com BOM', Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(CSV, 'utf16le')])],
+    ];
+
+    it.each(variants)('lê o cabeçalho e o valor em %s', (_label, buffer) => {
+      const table = readCsv(buffer, 'extrato.csv');
+      expect(table.rows[0]?.[0]).toBe('Data');
+      const outcome = parseInfinitePayStatement([table], options);
+      expect(outcome.rows).toHaveLength(1);
+      expect(outcome.rows[0]?.grossAmount).toBe(90);
+    });
+
+    it('desfaz o mojibake de acentos, não só do BOM', () => {
+      const garbled = Buffer.from(Buffer.from('Tipo de transação;Nome\n', 'utf8').toString('latin1'), 'utf8');
+      expect(readCsv(garbled, 'x.csv').rows[0]).toEqual(['Tipo de transação', 'Nome']);
+    });
+
+    it('reconhece variações de nome de coluna ("contém")', () => {
+      const csv = 'DATA DA TRANSAÇÃO;Hora;Tipo de transação (Pix/Depósito);Nome;Detalhe;Valor líquido (R$)\n'
+        + '02/10/2026;09:00;Pix;Pix JOAO;Recebido;40,00\n';
+      const outcome = parseInfinitePayStatement([readCsv(Buffer.from(csv, 'utf8'), 'x.csv')], options);
+      expect(outcome.rows).toHaveLength(1);
+      expect(outcome.rows[0]?.grossAmount).toBe(40);
+    });
+  });
 });
 
 describe('resolveProfessional', () => {

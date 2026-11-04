@@ -33,12 +33,13 @@ export function locateTable(
   aliases: ColumnAliases,
   required: readonly string[],
   searchDepth = 25,
+  loose = false,
 ): LocatedTable {
   const limit = Math.min(table.rows.length, searchDepth);
 
   for (let index = 0; index < limit; index += 1) {
     const row = table.rows[index] ?? [];
-    const columns = mapColumns(row, aliases);
+    const columns = mapColumns(row, aliases, loose);
     if (required.every((name) => columns.has(name))) {
       return {
         sheetName: table.name,
@@ -65,7 +66,7 @@ export function locateTable(
   );
 }
 
-function mapColumns(row: readonly string[], aliases: ColumnAliases): Map<string, number> {
+function mapColumns(row: readonly string[], aliases: ColumnAliases, loose: boolean): Map<string, number> {
   const columns = new Map<string, number>();
 
   row.forEach((cell, index) => {
@@ -73,6 +74,27 @@ function mapColumns(row: readonly string[], aliases: ColumnAliases): Map<string,
     if (!header) return;
     for (const [name, candidates] of Object.entries(aliases)) {
       if (!columns.has(name) && candidates.includes(header)) columns.set(name, index);
+    }
+  });
+
+  if (!loose) return columns;
+
+  // Segunda passada, só para o que o casamento exato não achou: o cabeçalho "contém" o
+  // apelido como palavra inteira ("valor (R$)" -> "valor r", "tipo de transação -
+  // movimento" -> "tipo de transacao"). Fica de fora da primeira passada para uma
+  // correspondência exata nunca perder a coluna para uma aproximada.
+  const taken = new Set(columns.values());
+  row.forEach((cell, index) => {
+    if (taken.has(index)) return;
+    const header = ` ${normalizeHeader(cell)} `;
+    if (header.trim() === '') return;
+    for (const [name, candidates] of Object.entries(aliases)) {
+      if (columns.has(name)) continue;
+      if (candidates.some((alias) => header.includes(` ${alias} `))) {
+        columns.set(name, index);
+        taken.add(index);
+        return;
+      }
     }
   });
 

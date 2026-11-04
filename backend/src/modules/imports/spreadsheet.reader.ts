@@ -173,9 +173,51 @@ function detectDelimiter(text: string): string {
   return best;
 }
 
+/** BOM do UTF-8 (EF BB BF) lido como Windows-1252/Latin-1: é o "ï»¿" que gruda em "Data". */
+const MOJIBAKE_BOM = '\u00EF\u00BB\u00BF';
+
+/**
+ * Converte os bytes de um CSV em texto, tolerando as codificações que circulam entre Excel,
+ * Bloco de Notas, PowerShell e Drive:
+ *  - UTF-8 com ou sem BOM;
+ *  - UTF-16 (LE/BE) com BOM, que o "Unicode" do Bloco de Notas gera;
+ *  - Windows-1252, quando os bytes não formam UTF-8 válido (Excel pt-BR em "CSV (separado
+ *    por vírgulas)");
+ *  - UTF-8 que já foi lido como Latin-1 e regravado (mojibake), onde o BOM vira "ï»¿" e
+ *    "transação" vira "transaÃ§Ã£o".
+ */
+export function decodeText(buffer: Buffer): string {
+  let text: string;
+
+  if (buffer[0] === 0xff && buffer[1] === 0xfe) {
+    text = buffer.subarray(2).toString('utf16le');
+  } else if (buffer[0] === 0xfe && buffer[1] === 0xff) {
+    text = Buffer.from(buffer.subarray(2)).swap16().toString('utf16le');
+  } else {
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    } catch {
+      text = buffer.toString('latin1');
+    }
+  }
+
+  // BOM verdadeiro (U+FEFF) e BOM corrompido ("ï»¿"), só no início do arquivo.
+  text = text.replace(/^\uFEFF/, '');
+  if (text.startsWith(MOJIBAKE_BOM)) text = text.slice(MOJIBAKE_BOM.length);
+
+  // Mojibake: se o texto ainda tem "Ã§", "Ã£", "Â " etc. e cabe todo em um byte por
+  // caractere, desfazer o desvio (Latin-1 -> bytes -> UTF-8) devolve o texto original.
+  if (/[\u00C3\u00C2][\u0080-\u00BF]/.test(text) && ![...text].some((char) => char.charCodeAt(0) > 0xff)) {
+    const repaired = Buffer.from(text, 'latin1').toString('utf8');
+    if (!repaired.includes('\uFFFD')) text = repaired;
+  }
+
+  return text;
+}
+
 export function readCsv(buffer: Buffer, fileName: string): SheetTable {
-  // Exportações do Excel vêm com BOM; sem remover, o 1º cabeçalho nunca casa.
-  const text = buffer.toString('utf8').replace(/^\uFEFF/, '');
+  // Sem remover o BOM (real ou corrompido) o 1º cabeçalho nunca casa.
+  const text = decodeText(buffer);
   const delimiter = detectDelimiter(text);
   const rows: string[][] = [];
   let cells: string[] = [];

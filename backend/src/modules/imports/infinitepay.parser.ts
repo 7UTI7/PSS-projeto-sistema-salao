@@ -297,10 +297,16 @@ function accountHolder(text: string): string | null {
 function readTabularMovements(
   tables: SheetTable[],
 ): { movements: Movement[]; skipped: SkippedRow[] } | null {
+  const fromBooksy = looksLike(tables) === 'booksy';
   for (const table of tables) {
     let located;
     try {
-      located = locateTable(table, TABLE_COLUMNS, TABLE_REQUIRED);
+      // O casamento por "contém" (loose) aceita variações como "Valor (R$)", mas é frouxo o
+      // bastante para tomar o relatório do Booksy (que também tem "Data" e "Valor ...") por
+      // extrato. Quando o arquivo é reconhecidamente do Booksy, só vale o nome exato — e a
+      // troca de arquivos continua sendo avisada pelo FILES_SWAPPED.
+      // loose: aceita variações como "Valor (R$)" ou "Tipo de transação - detalhe".
+      located = locateTable(table, TABLE_COLUMNS, TABLE_REQUIRED, 25, !fromBooksy);
     } catch {
       continue; // Esta aba não é a tabela de movimentações; tenta a próxima.
     }
