@@ -19,6 +19,9 @@ export const queryKeys = {
     all: ['reports'] as const,
     dre: (period: PeriodKey) => ['reports', 'dre', period] as const,
     cashFlow: (period: PeriodKey) => ['reports', 'cash-flow', period] as const,
+    // Fica sob 'reports' de propósito: a importação já invalida queryKeys.reports.all,
+    // então a conciliação se atualiza junto com o Dashboard depois de cada upload.
+    reconciliation: (period: PeriodKey) => ['reports', 'reconciliation', period] as const,
   },
   imports: {
     all: ['imports'] as const,

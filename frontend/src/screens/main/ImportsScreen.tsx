@@ -30,11 +30,13 @@ import {
   useProcessImport,
   useRollbackImport,
 } from '../../hooks/useImports';
-import { useIsAdmin } from '../../hooks/useReports';
+import { useIsAdmin, useReconciliation } from '../../hooks/useReports';
 import { getApiErrorMessage } from '../../services/api';
 import { ACCEPTED_EXTENSIONS_LABEL } from '../../services/import.service';
 import { DEFAULT_COMMISSION_RATE } from '../../config/studio.config';
 import { formatCurrency, formatDate, formatPercent, parseAmountInput } from '../../utils/formatters';
+import { periodLabel } from '../../utils/period';
+import { usePeriodStore } from '../../store/periodStore';
 import { importBatchStatusLabels, importSourceLabels } from '../../utils/labels';
 import type { ImportBatch, ImportPreview, ImportSource, PickedFile } from '../../types';
 
@@ -74,6 +76,9 @@ const SOURCES: SourceCard[] = [
 export default function ImportsScreen() {
   const isAdmin = useIsAdmin();
   const { file, pickFile, clearFile } = useFilePicker();
+  const period = usePeriodStore((state) => state.period);
+  const reconciliationQuery = useReconciliation();
+  const reconciliation = reconciliationQuery.data;
   const [source, setSource] = useState<ImportSource | null>(null);
   const [commissionPercent, setCommissionPercent] = useState(String(DEFAULT_COMMISSION_RATE * 100));
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -421,6 +426,120 @@ export default function ImportsScreen() {
                 <Text style={styles.secondaryActionText}>Descartar</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        ) : null}
+
+        {/* CONCILIAÇÃO: o vendido no Booksy contra o que caiu na conta da InfinitePay.
+            É agregada por período, não linha a linha: o extrato não tem coluna de taxa e
+            o repasse da maquininha é um lote diário, não uma linha por venda. Por isso a
+            taxa aqui é derivada da diferença, e aparece marcada como estimada. */}
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.summaryTitleRow}>
+            <Ionicons name="git-compare-outline" size={18} color={colors.primary} />
+            <Text style={styles.summaryTitle}>Resumo da conciliação</Text>
+          </View>
+        </View>
+
+        {reconciliationQuery.isPending ? (
+          <ActivityIndicator color={colors.primary} style={styles.historyLoader} />
+        ) : reconciliationQuery.isError ? (
+          <ErrorState error={reconciliationQuery.error} onRetry={reconciliationQuery.refetch} />
+        ) : reconciliation ? (
+          <View style={styles.card}>
+            <View style={styles.previewHeader}>
+              <View style={styles.previewTitleRow}>
+                <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+                <Text style={styles.previewTitle}>{periodLabel(period)}</Text>
+              </View>
+              <Text style={styles.previewSource}>Booksy × InfinitePay</Text>
+            </View>
+
+            {reconciliation.qtdServicos === 0 && reconciliation.liquidoReceber === 0 ? (
+              <Text style={styles.historyEmpty}>
+                Importe seus relatórios para ver os números deste mês.
+              </Text>
+            ) : (
+              <>
+                <View style={styles.previewGrid}>
+                  <View style={styles.previewBox}>
+                    <Text style={styles.previewLabel}>Vendas brutas (Booksy)</Text>
+                    <Text style={styles.previewValue}>
+                      {formatCurrency(reconciliation.vendasBrutas)}
+                    </Text>
+                  </View>
+                  <View style={styles.previewBox}>
+                    <Text style={styles.previewLabel}>Serviços</Text>
+                    <Text style={styles.previewValue}>{reconciliation.qtdServicos}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.previewGrid}>
+                  <View style={styles.previewBox}>
+                    <Text style={styles.previewLabel}>Recebido por Pix</Text>
+                    <Text style={styles.previewValue}>
+                      {formatCurrency(reconciliation.recebidoPix)}
+                    </Text>
+                  </View>
+                  <View style={styles.previewBox}>
+                    <Text style={styles.previewLabel}>Repasses da maquininha</Text>
+                    <Text style={styles.previewValue}>
+                      {formatCurrency(reconciliation.recebidoCartao)}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.previewGrid}>
+                  <View style={styles.previewBox}>
+                    <Text style={styles.previewLabel}>Taxas (estimadas)</Text>
+                    <Text style={styles.previewValue}>
+                      {reconciliation.taxas === null
+                        ? '--'
+                        : formatCurrency(reconciliation.taxas)}
+                    </Text>
+                  </View>
+                  <View style={[styles.previewBox, styles.previewBoxHighlight]}>
+                    <Text style={styles.previewLabel}>Líquido recebido</Text>
+                    <Text style={[styles.previewValue, { color: colors.violetRoyal }]}>
+                      {formatCurrency(reconciliation.liquidoReceber)}
+                    </Text>
+                  </View>
+                </View>
+
+                {reconciliation.descontos > 0 ? (
+                  <Text style={styles.previewPeriod}>
+                    Descontos no período: {formatCurrency(reconciliation.descontos)} — não
+                    geram dinheiro a receber.
+                  </Text>
+                ) : null}
+
+                <Text style={styles.fieldHelp}>
+                  {reconciliation.taxaMediaEfetiva === null
+                    ? 'A taxa só é calculada com as duas origens importadas no mesmo período.'
+                    : `Taxa média efetiva de ${formatPercent(reconciliation.taxaMediaEfetiva)}, derivada da diferença entre o vendido e o recebido. O extrato da InfinitePay não traz a taxa, e o repasse da maquininha já chega líquido.`}
+                </Text>
+
+                {reconciliation.divergencias.length === 0 ? (
+                  <View style={styles.infoBanner}>
+                    <Ionicons name="checkmark-circle-outline" size={15} color={colors.primary} />
+                    <Text style={styles.infoText}>
+                      Sem divergências: o que foi vendido bate com o que caiu na conta.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.skippedBox}>
+                    <Text style={styles.skippedTitle}>
+                      {reconciliation.divergencias.length} divergência(s) ·{' '}
+                      {formatCurrency(reconciliation.totalDivergencias)}
+                    </Text>
+                    {reconciliation.divergencias.map((item) => (
+                      <Text key={item.tipo} style={styles.skippedItem}>
+                        • {formatCurrency(item.valor)} — {item.descricao}
+                      </Text>
+                    ))}
+                  </View>
+                )}
+              </>
+            )}
           </View>
         ) : null}
 

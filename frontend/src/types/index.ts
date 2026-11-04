@@ -129,6 +129,43 @@ export interface CashFlowPoint {
   amount: number;
 }
 
+export type DivergenceKind =
+  | 'sem_booksy'
+  | 'sem_infinitepay'
+  | 'recebido_acima_do_vendido'
+  | 'entrada_fora_de_venda'
+  | 'residuo';
+
+export interface ReconciliationDivergence {
+  tipo: DivergenceKind;
+  descricao: string;
+  valor: number;
+}
+
+/**
+ * Conciliação do período (GET /reports/reconciliation): o vendido no Booksy contra o
+ * recebido na InfinitePay.
+ *
+ * `taxas` e `taxaMediaEfetiva` são DERIVADOS da diferença entre os dois lados, não lidos
+ * do extrato — ele não tem coluna de taxa e o repasse da maquininha já chega líquido.
+ * Vêm `null` quando falta uma das duas origens no período, e nesse caso a divergência
+ * diz qual arquivo está faltando.
+ */
+export interface ReconciliationSummary {
+  vendasBrutas: number;
+  descontos: number;
+  vendasLiquidas: number;
+  qtdServicos: number;
+  recebidoPix: number;
+  recebidoCartao: number;
+  outrasEntradas: number;
+  liquidoReceber: number;
+  taxas: number | null;
+  taxaMediaEfetiva: number | null;
+  divergencias: ReconciliationDivergence[];
+  totalDivergencias: number;
+}
+
 // ---------------------------------------------------------------------------
 // Importação de relatórios (Booksy / InfinitePay)
 // ---------------------------------------------------------------------------

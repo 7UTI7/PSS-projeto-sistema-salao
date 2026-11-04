@@ -1,4 +1,4 @@
-// Hooks dos relatórios DRE e Fluxo de Caixa, sempre no mês de referência do app.
+// Hooks dos relatórios DRE, Fluxo de Caixa e Conciliação, no mês de referência do app.
 //
 // As duas rotas são restritas ao admin. Em vez de deixar a tela receber um 403, as
 // queries só rodam quando o usuário logado é admin (`enabled`), e a tela mostra o
@@ -31,6 +31,17 @@ export function useCashFlowReport() {
   return useQuery({
     queryKey: queryKeys.reports.cashFlow(period),
     queryFn: () => reportService.getCashFlow(period),
+    enabled: isAdmin,
+  });
+}
+
+export function useReconciliation() {
+  const period = usePeriodStore((state) => state.period);
+  const isAdmin = useIsAdmin();
+
+  return useQuery({
+    queryKey: queryKeys.reports.reconciliation(period),
+    queryFn: () => reportService.getReconciliation(period),
     enabled: isAdmin,
   });
 }
