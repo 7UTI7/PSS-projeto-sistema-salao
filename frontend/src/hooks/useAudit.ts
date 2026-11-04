@@ -100,7 +100,22 @@ export function useAuditFilePicker() {
 
   const clearFiles = useCallback(() => setFiles({}), []);
 
-  return { files, pickFile, clearFiles, ready: Boolean(files.booksy && files.infinitepay) };
+  /** Tira um arquivo só, para quando ela escolhe o errado. */
+  const clearFile = useCallback((source: ImportSource) => {
+    setFiles((current) => {
+      const next = { ...current };
+      delete next[source];
+      return next;
+    });
+  }, []);
+
+  return {
+    files,
+    pickFile,
+    clearFile,
+    clearFiles,
+    ready: Boolean(files.booksy && files.infinitepay),
+  };
 }
 
 /** Desfaz o percent-encoding do seletor e junta os acentos combinantes (NFD -> NFC). */

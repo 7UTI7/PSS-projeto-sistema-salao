@@ -85,7 +85,7 @@ export default function ImportsScreen() {
   const period = usePeriodStore((state) => state.period);
   const setPeriod = usePeriodStore((state) => state.setPeriod);
 
-  const { files, pickFile, clearFiles, ready } = useAuditFilePicker();
+  const { files, pickFile, clearFile, clearFiles, ready } = useAuditFilePicker();
   // Formulário de correção: aberto só quando ela decide justificar a diferença.
   const [reason, setReason] = useState<AuditReason | null>(null);
   const [entryAmount, setEntryAmount] = useState('');
@@ -307,6 +307,21 @@ export default function ImportsScreen() {
                     : card.hint}
                 </Text>
               </TouchableOpacity>
+
+              {/* Tirar o arquivo escolhido. Tocar na área troca por outro, mas quem
+                  pegou o errado às vezes só quer deixar o campo vazio e reler a dica de
+                  onde exportar — sem precisar escolher algo para se livrar do engano. */}
+              {picked ? (
+                <TouchableOpacity
+                  style={styles.removeFileBtn}
+                  activeOpacity={0.7}
+                  disabled={busy}
+                  onPress={() => clearFile(card.source)}
+                >
+                  <Ionicons name="close-circle-outline" size={16} color={colors.statusError} />
+                  <Text style={styles.removeFileText}>Tirar este arquivo</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           );
         })}
@@ -327,11 +342,21 @@ export default function ImportsScreen() {
           )}
         </TouchableOpacity>
 
-        {!ready ? (
+        {ready ? (
+          <TouchableOpacity
+            style={styles.secondaryActionBtn}
+            activeOpacity={0.8}
+            disabled={busy}
+            onPress={clearFiles}
+          >
+            <Ionicons name="close-circle-outline" size={16} color={colors.graphiteMuted} />
+            <Text style={styles.secondaryActionText}>Tirar os dois</Text>
+          </TouchableOpacity>
+        ) : (
           <Text style={styles.fieldHelp}>
             Escolha os dois arquivos para conferir. O mês só fecha com os dois lados.
           </Text>
-        ) : null}
+        )}
 
         {/* ===================== 2. A AUDITORIA DO MÊS ===================== */}
         <View style={styles.sectionHeaderRow}>
@@ -1285,5 +1310,18 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.bodySemiBold,
     fontSize: 11,
     color: colors.graphiteMuted,
+  },
+  removeFileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingVertical: 8,
+  },
+  removeFileText: {
+    fontFamily: typography.fonts.bodyMedium,
+    fontSize: 12,
+    color: colors.statusError,
   },
 });
