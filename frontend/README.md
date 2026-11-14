@@ -148,7 +148,11 @@ Ou diretamente pelo Expo CLI:
 ```bash
 npx expo start
 ```
+alternativa para emular no navegador (não precisa de nenhum dispositivo mobile para funcionar)
 
+```bash
+npm run web
+```
 ### 4.4. Como Abrir o App no Celular ou Emulador
 
 Ao iniciar, o terminal exibirá um **QR Code**:

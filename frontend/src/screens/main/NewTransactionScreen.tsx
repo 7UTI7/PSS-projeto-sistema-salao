@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../navigation/types';
-import { colors, typography, borderRadius, shadows } from '../../theme/theme';
+import { typography, borderRadius, useAppTheme } from '../../theme/theme';
 import { LoadingState } from '../../components/ui/QueryState';
 import { useCategoriesForType } from '../../hooks/useCategories';
 import {
@@ -108,6 +108,10 @@ export default function NewTransactionScreen() {
   const transactionId = route.params?.transactionId;
   const isEditing = Boolean(transactionId);
 
+  const theme = useAppTheme();
+  const { colors } = theme;
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const isAdmin = useAuthStore((state) => state.user?.role === 'admin');
 
   // A edição reusa a lista já em cache; não existe GET /transactions/:id na API.
@@ -140,16 +144,10 @@ export default function NewTransactionScreen() {
     setDraft({ ...form, ...changes });
   }
 
-  // A taxa não é mais sugerida aqui: campo vazio significa "usar o padrão da forma de
-  // pagamento", que é resolvido no servidor. Antes o app preenchia 0% para Pix, o que
-  // fazia parecer que a taxa digitada à mão tinha vindo de alguma configuração.
   function handleSelectPaymentMethod(method: PaymentMethod) {
     update({ paymentMethod: method });
   }
 
-  // A categoria guardada pode não valer para o tipo atual (a dona alternou receita ->
-  // despesa). Vale a derivada, não a guardada: assim nada é apagado do rascunho e o
-  // formulário volta a mostrar a categoria original se ela alternar de volta.
   const category = categories.some((item) => item.name === form.category) ? form.category : '';
 
   const grossAmount = parseAmountInput(form.amount);
@@ -188,11 +186,7 @@ export default function NewTransactionScreen() {
       description: description.trim(),
       grossAmount,
       discountAmount,
-      // Lançamento manual não tem taxa: o que a maquininha retém já vem descontado no
-      // extrato da InfinitePay. Mandar zero explicitamente impede o servidor de aplicar
-      // o padrão da forma de pagamento e descontar de novo.
       paymentFeeRate: 0,
-      // Sempre zero: o estúdio não trabalha com repasse por profissional.
       professionalCommissionRate: 0,
       category,
       paymentMethod,
@@ -200,8 +194,6 @@ export default function NewTransactionScreen() {
       status,
       ...(isAdmin ? { professional } : {}),
       ...(type === 'despesa' ? { costType } : {}),
-      // A API preenche settledAt com a data de hoje quando o status é liquidada e
-      // nada é informado; em edição, manter a data original evita remexer no caixa.
       ...(status === 'liquidada' && existing?.settledAt ? { settledAt: existing.settledAt } : {}),
     };
 
@@ -270,13 +262,6 @@ export default function NewTransactionScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Só entrada: o estúdio não registra despesa à mão. O que sai da conta é o
-            Saldo Retirado, lido do extrato, e as saídas da auditoria (taxa, estorno)
-            são criadas por ela própria.
-
-            Um lançamento de SAÍDA ainda pode chegar aqui pela edição — foi a auditoria
-            que o criou. Nesse caso o tipo é preservado e apenas anunciado: trocá-lo em
-            silêncio viraria o sinal do ajuste e reabriria o mês. */}
         {!isIncome ? (
           <View style={styles.outflowBanner}>
             <Ionicons name="arrow-down-circle" size={17} color={colors.statusError} />
@@ -491,10 +476,10 @@ export default function NewTransactionScreen() {
           disabled={saving}
         >
           {saving ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
+            <ActivityIndicator color={colors.onPrimary} size="small" />
           ) : (
             <>
-              <Ionicons name="checkmark-circle-outline" size={20} color="#FFFFFF" />
+              <Ionicons name="checkmark-circle-outline" size={20} color={colors.onPrimary} />
               <Text style={styles.saveBtnText}>
                 {isEditing ? 'Salvar alterações' : 'Confirmar e salvar lançamento'}
               </Text>
@@ -506,339 +491,341 @@ export default function NewTransactionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  modalHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderWhisper,
-    alignItems: 'center',
-  },
-  dragPill: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.borderWhisper,
-    marginBottom: 8,
-  },
-  headerBar: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 20,
-    color: colors.graphiteText,
-  },
-  headerSubtitle: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.lavenderTint,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 48,
-  },
-  segmentedContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.md,
-    padding: 3,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-  },
-  segmentBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 9,
-    borderRadius: borderRadius.sm,
-  },
-  segmentBtnActive: {
-    backgroundColor: colors.primary,
-  },
-  segmentBtnActiveExpense: {
-    backgroundColor: colors.statusError,
-  },
-  segmentBtnDisabled: {
-    opacity: 0.45,
-  },
-  segmentIcon: {
-    marginRight: 6,
-  },
-  segmentText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-  },
-  segmentTextActive: {
-    color: '#FFFFFF',
-  },
-  roleHint: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-    marginBottom: 12,
-    marginTop: -6,
-  },
-  amountCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    marginBottom: 14,
-    ...shadows.card,
-  },
-  fieldLabel: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: colors.graphiteMuted,
-    marginBottom: 6,
-  },
-  fieldSpacing: {
-    marginTop: 16,
-  },
-  fieldHelp: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    marginTop: 5,
-    lineHeight: 15,
-  },
-  inlineField: {
-    marginTop: 14,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderWhisper,
-  },
-  inlineLoader: {
-    alignSelf: 'flex-start',
-    marginVertical: 6,
-  },
-  amountInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  currencyPrefix: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 26,
-    color: colors.primary,
-    marginRight: 6,
-  },
-  amountInput: {
-    flex: 1,
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 30,
-    color: colors.graphiteText,
-    padding: 0,
-  },
-  formCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    marginBottom: 14,
-    ...shadows.card,
-  },
-  textInput: {
-    backgroundColor: colors.surfaceCanvas,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontFamily: typography.fonts.body,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  pillsScroll: {
-    flexDirection: 'row',
-  },
-  categoryPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.surfaceCanvas,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    marginRight: 6,
-  },
-  categoryPillSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  categoryPillText: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 12,
-    color: colors.primary,
-  },
-  categoryPillTextSelected: {
-    color: '#FFFFFF',
-  },
-  pillRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  pill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.surfaceCanvas,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-  },
-  pillSelectedDark: {
-    backgroundColor: colors.graphiteText,
-    borderColor: colors.graphiteText,
-  },
-  pillText: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 12,
-    color: colors.graphiteText,
-  },
-  pillTextSelected: {
-    color: '#FFFFFF',
-  },
-  summaryCard: {
-    backgroundColor: colors.lavenderTint,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.lavenderSubtle,
-    marginBottom: 16,
-    padding: 14,
-  },
-  summaryTitle: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 11,
-    color: colors.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 8,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 2,
-  },
-  summaryLabel: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 12,
-    color: colors.graphiteText,
-  },
-  summaryValue: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 12,
-    color: colors.graphiteText,
-  },
-  summaryTotalRow: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: colors.lavenderSubtle,
-  },
-  summaryTotalLabel: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  summaryTotalValue: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 14,
-    color: colors.violetRoyal,
-  },
-  summaryNote: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    marginTop: 8,
-  },
-  saveBtn: {
-    backgroundColor: colors.violetRoyal,
-    borderRadius: borderRadius.md,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    ...shadows.card,
-  },
-  saveBtnDisabled: {
-    opacity: 0.7,
-  },
-  saveBtnText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 14,
-    color: '#FFFFFF',
-  },
-  notFound: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    gap: 8,
-  },
-  notFoundTitle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 17,
-    color: colors.graphiteText,
-  },
-  notFoundText: {
-    fontFamily: typography.fonts.body,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-    textAlign: 'center',
-  },
-  notFoundBtn: {
-    marginTop: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 22,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.primary,
-  },
-  notFoundBtnText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: '#FFFFFF',
-  },
-  outflowBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.statusErrorBg,
-    borderRadius: borderRadius.md,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 16,
-  },
-  outflowText: {
-    flex: 1,
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 12,
-    color: colors.statusError,
-  },
-});
+const createStyles = ({ colors, shadows, borderWidth, s }: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    modalHeader: {
+      paddingHorizontal: 16,
+      paddingTop: 10,
+      paddingBottom: 12,
+      backgroundColor: colors.surfacePure,
+      borderBottomWidth: borderWidth,
+      borderBottomColor: colors.borderWhisper,
+      alignItems: 'center',
+    },
+    dragPill: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.borderWhisper,
+      marginBottom: 8,
+    },
+    headerBar: {
+      width: '100%',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    headerTitle: {
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(20),
+      color: colors.graphiteText,
+    },
+    headerSubtitle: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+    },
+    closeBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.lavenderTint,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      padding: 16,
+      paddingBottom: 48,
+    },
+    segmentedContainer: {
+      flexDirection: 'row',
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.md,
+      padding: 3,
+      marginBottom: 14,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+    },
+    segmentBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingVertical: 9,
+      borderRadius: borderRadius.sm,
+    },
+    segmentBtnActive: {
+      backgroundColor: colors.primary,
+    },
+    segmentBtnActiveExpense: {
+      backgroundColor: colors.statusError,
+    },
+    segmentBtnDisabled: {
+      opacity: 0.45,
+    },
+    segmentIcon: {
+      marginRight: 6,
+    },
+    segmentText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+    },
+    segmentTextActive: {
+      color: colors.onPrimary,
+    },
+    roleHint: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+      marginBottom: 12,
+      marginTop: -6,
+    },
+    amountCard: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      padding: 14,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      marginBottom: 14,
+      ...shadows.card,
+    },
+    fieldLabel: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(10),
+      letterSpacing: 0.8,
+      color: colors.graphiteMuted,
+      marginBottom: 6,
+    },
+    fieldSpacing: {
+      marginTop: 16,
+    },
+    fieldHelp: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      marginTop: 5,
+      lineHeight: 15,
+    },
+    inlineField: {
+      marginTop: 14,
+      paddingTop: 12,
+      borderTopWidth: borderWidth,
+      borderTopColor: colors.borderWhisper,
+    },
+    inlineLoader: {
+      alignSelf: 'flex-start',
+      marginVertical: 6,
+    },
+    amountInputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    currencyPrefix: {
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(26),
+      color: colors.primary,
+      marginRight: 6,
+    },
+    amountInput: {
+      flex: 1,
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(30),
+      color: colors.graphiteText,
+      padding: 0,
+    },
+    formCard: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      padding: 14,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      marginBottom: 14,
+      ...shadows.card,
+    },
+    textInput: {
+      backgroundColor: colors.surfaceCanvas,
+      borderRadius: borderRadius.md,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontFamily: typography.fonts.body,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    pillsScroll: {
+      flexDirection: 'row',
+    },
+    categoryPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.surfaceCanvas,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      marginRight: 6,
+    },
+    categoryPillSelected: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    categoryPillText: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(12),
+      color: colors.primary,
+    },
+    categoryPillTextSelected: {
+      color: colors.onPrimary,
+    },
+    pillRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+    },
+    pill: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.surfaceCanvas,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+    },
+    pillSelectedDark: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    pillText: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(12),
+      color: colors.graphiteText,
+    },
+    pillTextSelected: {
+      color: colors.onPrimary,
+    },
+    summaryCard: {
+      backgroundColor: colors.lavenderTint,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.lavenderSubtle,
+      marginBottom: 16,
+      padding: 14,
+    },
+    summaryTitle: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(11),
+      color: colors.primary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+      marginBottom: 8,
+    },
+    summaryRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginVertical: 2,
+    },
+    summaryLabel: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(12),
+      color: colors.graphiteText,
+    },
+    summaryValue: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(12),
+      color: colors.graphiteText,
+    },
+    summaryTotalRow: {
+      marginTop: 8,
+      paddingTop: 8,
+      borderTopWidth: borderWidth,
+      borderTopColor: colors.lavenderSubtle,
+    },
+    summaryTotalLabel: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    summaryTotalValue: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(14),
+      color: colors.violetRoyal,
+    },
+    summaryNote: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      marginTop: 8,
+    },
+    saveBtn: {
+      backgroundColor: colors.violetRoyal,
+      borderRadius: borderRadius.md,
+      paddingVertical: 14,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+      ...shadows.card,
+    },
+    saveBtnDisabled: {
+      opacity: 0.7,
+    },
+    saveBtnText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(14),
+      color: colors.onPrimary,
+    },
+    notFound: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 32,
+      gap: 8,
+    },
+    notFoundTitle: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(17),
+      color: colors.graphiteText,
+    },
+    notFoundText: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+      textAlign: 'center',
+    },
+    notFoundBtn: {
+      marginTop: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 22,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.primary,
+    },
+    notFoundBtnText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(13),
+      color: colors.onPrimary,
+    },
+    outflowBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.statusErrorBg,
+      borderRadius: borderRadius.md,
+      paddingVertical: 12,
+      paddingHorizontal: 14,
+      marginBottom: 16,
+    },
+    outflowText: {
+      flex: 1,
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(12),
+      color: colors.statusError,
+    },
+  });

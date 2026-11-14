@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
-import { colors, typography, borderRadius, shadows } from '../../theme/theme';
+import { typography, borderRadius, useAppTheme, AppColors } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { EmptyState, ErrorState, LoadingState } from '../../components/ui/QueryState';
 import { useCashFlowReport, useFinancialSummary, useIsAdmin } from '../../hooks/useReports';
@@ -36,6 +36,10 @@ const RECENT_COUNT = 5;
 export default function DashboardScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [balanceVisible, setBalanceVisible] = useState(true);
+
+  const theme = useAppTheme();
+  const { colors } = theme;
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const period = usePeriodStore((state) => state.period);
   const userName = useAuthStore((state) => state.user?.name);
@@ -147,12 +151,7 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* UM número só: o que ainda está na conta da InfinitePay. É a resposta de
-            "quanto eu tenho", e dividir o destaque com outros valores a enfraquecia.
-            Bruto, retirado e líquido estão detalhados no Desempenho Mensal.
-
-            Para a colaboradora, que não vê a auditoria, o banner segue mostrando o saldo
-            liquidado do período, como antes. */}
+        {/* UM número só: o que ainda está na conta da InfinitePay. */}
         <View style={styles.bannerCard}>
           <View style={styles.glowTopRight} />
           <View style={styles.glowBottomLeft} />
@@ -182,7 +181,7 @@ export default function DashboardScreen() {
 
           <View style={styles.bannerFooter}>
             <View style={styles.growthBadge}>
-              <Ionicons name="trending-up" size={15} color={colors.lavenderSubtle} />
+              <Ionicons name="trending-up" size={15} color="#DDD6FE" />
               <Text style={styles.growthText}>
                 {cashFlow.days} {cashFlow.days === 1 ? 'dia com movimento' : 'dias com movimento'}
               </Text>
@@ -194,13 +193,12 @@ export default function DashboardScreen() {
               onPress={() => navigation.navigate('Main', { screen: 'Transactions' })}
             >
               <Text style={styles.statementText}>Extrato detalhado</Text>
-              <Ionicons name="arrow-forward" size={14} color={colors.lavenderTint} />
+              <Ionicons name="arrow-forward" size={14} color="#EDE9FE" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* AUDITORIA PENDENTE: os números acima só são confiáveis com a conta fechada,
-            então o aviso leva direto para onde se resolve. */}
+        {/* AUDITORIA PENDENTE */}
         {audit && audit.outcome !== 'aprovada' ? (
           <TouchableOpacity
             style={styles.auditWarnCard}
@@ -217,11 +215,6 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {/* UM vocabulário só: bruto, retirado, líquido.
-            "Faturamento bruto" e "Receita líquida" saíram daqui porque eram esses
-            mesmos números com outro nome — e, com o mês conferido, exatamente iguais.
-
-            Sem eles (colaboradora), mostra o aviso de área restrita. */}
         <View style={styles.sectionHeadingRow}>
           <Text style={styles.sectionHeading}>DESEMPENHO MENSAL</Text>
           <Text style={styles.sectionHeadingRight}>{periodLabel(period)}</Text>
@@ -239,6 +232,7 @@ export default function DashboardScreen() {
             {audit ? (
               <View style={styles.grid2x2}>
                 <KpiCard
+                  styles={styles}
                   label="Saldo bruto"
                   value={formatCurrency(audit.saldoBruto)}
                   hint="Tudo que entrou na conta"
@@ -247,6 +241,7 @@ export default function DashboardScreen() {
                   iconBackground={colors.lavenderTint}
                 />
                 <KpiCard
+                  styles={styles}
                   label="Saldo retirado"
                   value={formatCurrency(audit.saldoRetirado)}
                   hint="Transferido para a conta do salão"
@@ -256,6 +251,7 @@ export default function DashboardScreen() {
                   valueColor={colors.statusError}
                 />
                 <KpiCard
+                  styles={styles}
                   label="Saldo líquido"
                   value={formatCurrency(audit.saldoLiquido)}
                   hint="O que ainda está na conta"
@@ -267,7 +263,7 @@ export default function DashboardScreen() {
               </View>
             ) : null}
 
-            {/* META MENSAL: editável no perfil, guardada no aparelho (store/goalStore.ts). */}
+            {/* META MENSAL */}
             <View style={styles.metaCard}>
               <View style={styles.metaTop}>
                 <View style={styles.metaLeft}>
@@ -340,7 +336,6 @@ export default function DashboardScreen() {
                       <Text style={styles.legendAmount}>{formatCurrency(amount)}</Text>
                     </View>
 
-                    {/* Barra em vez de donut: mais legível e sem dependência de gráfico. */}
                     <View style={styles.shareTrack}>
                       <View
                         style={[
@@ -388,6 +383,8 @@ export default function DashboardScreen() {
             recent.map((transaction) => (
               <RecentItem
                 key={transaction._id}
+                styles={styles}
+                colors={colors}
                 transaction={transaction}
                 onPress={() =>
                   navigation.navigate('NewTransaction', { transactionId: transaction._id })
@@ -397,12 +394,12 @@ export default function DashboardScreen() {
           )}
         </View>
       </ScrollView>
-
     </View>
   );
 }
 
 interface KpiCardProps {
+  styles: ReturnType<typeof createStyles>;
   label: string;
   value: string;
   hint: string;
@@ -412,7 +409,16 @@ interface KpiCardProps {
   valueColor?: string;
 }
 
-function KpiCard({ label, value, hint, icon, iconColor, iconBackground, valueColor }: KpiCardProps) {
+function KpiCard({
+  styles,
+  label,
+  value,
+  hint,
+  icon,
+  iconColor,
+  iconBackground,
+  valueColor,
+}: KpiCardProps) {
   return (
     <View style={styles.kpiCard}>
       <View style={styles.kpiTopRow}>
@@ -428,9 +434,13 @@ function KpiCard({ label, value, hint, icon, iconColor, iconBackground, valueCol
 }
 
 function RecentItem({
+  styles,
+  colors,
   transaction,
   onPress,
 }: {
+  styles: ReturnType<typeof createStyles>;
+  colors: AppColors;
   transaction: Transaction;
   onPress: () => void;
 }) {
@@ -471,495 +481,496 @@ function RecentItem({
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 110,
-  },
-  greetingSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  greetingTextCol: {
-    flex: 1,
-  },
-  atelierLabel: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 9,
-    letterSpacing: 1.6,
-    color: colors.violetRoyal,
-  },
-  greetingTitle: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 26,
-    color: colors.graphiteText,
-    marginTop: 2,
-  },
-  greetingSub: {
-    fontFamily: typography.fonts.body,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-    marginTop: 2,
-  },
-  eyeBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: borderRadius.full,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bannerCard: {
-    backgroundColor: colors.violetDeep,
-    borderRadius: borderRadius.xl,
-    padding: 20,
-    overflow: 'hidden',
-    marginBottom: 20,
-    ...shadows.banner,
-  },
-  glowTopRight: {
-    position: 'absolute',
-    top: -40,
-    right: -30,
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    backgroundColor: 'rgba(196, 181, 253, 0.18)',
-  },
-  glowBottomLeft: {
-    position: 'absolute',
-    bottom: -50,
-    left: -30,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(124, 58, 237, 0.25)',
-  },
-  bannerHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  bannerTagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    flex: 1,
-  },
-  pulseDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.lavenderAccent,
-  },
-  bannerTagText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 9,
-    letterSpacing: 1,
-    color: colors.lavenderSubtle,
-  },
-  consolidatedBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: borderRadius.full,
-  },
-  consolidatedText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 9,
-    color: '#FFFFFF',
-  },
-  balanceRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 6,
-    marginTop: 14,
-  },
-  balanceCurrency: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 16,
-    color: colors.lavenderSubtle,
-    marginBottom: 5,
-  },
-  balanceNumber: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 34,
-    color: '#FFFFFF',
-  },
-  bannerFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  growthBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  growthText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 11,
-    color: colors.lavenderSubtle,
-  },
-  statementLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  statementText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 11,
-    color: colors.lavenderTint,
-  },
-  sectionHeadingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  sectionHeading: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 10,
-    letterSpacing: 1.2,
-    color: colors.graphiteMuted,
-  },
-  sectionHeadingRight: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-  },
-  restrictedCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: colors.lavenderTint,
-    borderWidth: 1,
-    borderColor: colors.lavenderSubtle,
-    borderRadius: borderRadius.lg,
-    padding: 14,
-    marginBottom: 20,
-  },
-  restrictedText: {
-    flex: 1,
-    fontFamily: typography.fonts.body,
-    fontSize: 12,
-    color: colors.primary,
-    lineHeight: 17,
-  },
-  auditWarnCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: colors.statusWarningBg,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-    padding: 14,
-    marginBottom: 20,
-  },
-  auditWarnText: {
-    flex: 1,
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 12,
-    color: colors.graphiteText,
-    lineHeight: 16,
-  },
-  grid2x2: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 16,
-  },
-  kpiCard: {
-    flexGrow: 1,
-    flexBasis: '47%',
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 13,
-    ...shadows.card,
-  },
-  kpiTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  kpiLabel: {
-    flex: 1,
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-    marginRight: 6,
-  },
-  kpiIconCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: borderRadius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  kpiValue: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 17,
-    color: colors.graphiteText,
-  },
-  kpiSub: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    marginTop: 3,
-  },
-  metaCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 14,
-    marginBottom: 20,
-    ...shadows.card,
-  },
-  metaTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  metaLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  metaLabel: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 9,
-    letterSpacing: 1,
-    color: colors.graphiteMuted,
-  },
-  metaTarget: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 15,
-    color: colors.graphiteText,
-  },
-  metaRight: {
-    alignItems: 'flex-end',
-  },
-  metaPercent: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 12,
-    color: colors.violetRoyal,
-  },
-  metaDays: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-  },
-  trackBar: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.surfaceContainer,
-    marginTop: 12,
-    overflow: 'hidden',
-  },
-  fillBar: {
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: colors.violetRoyal,
-  },
-  metaBottom: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  metaSubText: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-  },
-  breakdownCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 14,
-    marginBottom: 20,
-    ...shadows.card,
-  },
-  breakdownTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 14,
-  },
-  atelierTag: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 9,
-    letterSpacing: 1.2,
-    color: colors.violetRoyal,
-  },
-  breakdownTitle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 16,
-    color: colors.graphiteText,
-    marginTop: 2,
-  },
-  breakdownEmpty: {
-    fontFamily: typography.fonts.body,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-  },
-  legendCol: {
-    gap: 14,
-  },
-  legendBlock: {
-    gap: 7,
-  },
-  legendRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  legendItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendName: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  legendShare: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-  },
-  legendAmount: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  shareTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.surfaceContainer,
-    overflow: 'hidden',
-  },
-  shareFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  recentSection: {
-    marginBottom: 8,
-  },
-  recentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  recentTitle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 16,
-    color: colors.graphiteText,
-  },
-  recentSub: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-    marginTop: 2,
-  },
-  recentEmpty: {
-    paddingVertical: 28,
-  },
-  viewAllRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  viewAllText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 11,
-    color: colors.violetRoyal,
-  },
-  transactionItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 12,
-    marginBottom: 8,
-  },
-  txLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-    marginRight: 10,
-  },
-  txTextCol: {
-    flex: 1,
-  },
-  txIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.lavenderTint,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  txTitle: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  txMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-  },
-  txCategory: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-  },
-  txRight: {
-    alignItems: 'flex-end',
-  },
-  incomeText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: colors.violetRoyal,
-  },
-  expenseText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: colors.statusError,
-  },
-  txTime: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    marginTop: 2,
-  },
-});
+const createStyles = ({ colors, shadows, borderWidth, s }: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+    },
+    content: {
+      padding: 16,
+      paddingBottom: 110,
+    },
+    greetingSection: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 16,
+    },
+    greetingTextCol: {
+      flex: 1,
+    },
+    atelierLabel: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(9),
+      letterSpacing: 1.6,
+      color: colors.violetRoyal,
+    },
+    greetingTitle: {
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(26),
+      color: colors.graphiteText,
+      marginTop: 2,
+    },
+    greetingSub: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+      marginTop: 2,
+    },
+    eyeBtn: {
+      width: 38,
+      height: 38,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.surfacePure,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    bannerCard: {
+      backgroundColor: colors.violetDeep,
+      borderRadius: borderRadius.xl,
+      padding: 20,
+      overflow: 'hidden',
+      marginBottom: 20,
+      ...shadows.banner,
+    },
+    glowTopRight: {
+      position: 'absolute',
+      top: -40,
+      right: -30,
+      width: 130,
+      height: 130,
+      borderRadius: 65,
+      backgroundColor: 'rgba(196, 181, 253, 0.18)',
+    },
+    glowBottomLeft: {
+      position: 'absolute',
+      bottom: -50,
+      left: -30,
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      backgroundColor: 'rgba(124, 58, 237, 0.25)',
+    },
+    bannerHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    bannerTagRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      flex: 1,
+    },
+    pulseDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 3.5,
+      backgroundColor: colors.lavenderAccent,
+    },
+    bannerTagText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(9),
+      letterSpacing: 1,
+      color: '#EDE9FE',
+    },
+    consolidatedBadge: {
+      backgroundColor: 'rgba(255, 255, 255, 0.14)',
+      paddingHorizontal: 9,
+      paddingVertical: 3,
+      borderRadius: borderRadius.full,
+    },
+    consolidatedText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(9),
+      color: '#FFFFFF',
+    },
+    balanceRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      gap: 6,
+      marginTop: 14,
+    },
+    balanceCurrency: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(16),
+      color: '#DDD6FE',
+      marginBottom: 5,
+    },
+    balanceNumber: {
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(34),
+      color: '#FFFFFF',
+    },
+    bannerFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginTop: 16,
+    },
+    growthBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+    growthText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(11),
+      color: '#DDD6FE',
+    },
+    statementLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    statementText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(11),
+      color: '#EDE9FE',
+    },
+    sectionHeadingRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    sectionHeading: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(10),
+      letterSpacing: 1.2,
+      color: colors.graphiteMuted,
+    },
+    sectionHeadingRight: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+    },
+    restrictedCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: colors.lavenderTint,
+      borderWidth,
+      borderColor: colors.lavenderSubtle,
+      borderRadius: borderRadius.lg,
+      padding: 14,
+      marginBottom: 20,
+    },
+    restrictedText: {
+      flex: 1,
+      fontFamily: typography.fonts.body,
+      fontSize: s(12),
+      color: colors.primary,
+      lineHeight: 17,
+    },
+    auditWarnCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: colors.statusWarningBg,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.statusWarning,
+      padding: 14,
+      marginBottom: 20,
+    },
+    auditWarnText: {
+      flex: 1,
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(12),
+      color: colors.graphiteText,
+      lineHeight: 16,
+    },
+    grid2x2: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginBottom: 16,
+    },
+    kpiCard: {
+      flexGrow: 1,
+      flexBasis: '47%',
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 13,
+      ...shadows.card,
+    },
+    kpiTopRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 8,
+    },
+    kpiLabel: {
+      flex: 1,
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+      marginRight: 6,
+    },
+    kpiIconCircle: {
+      width: 28,
+      height: 28,
+      borderRadius: borderRadius.full,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    kpiValue: {
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(17),
+      color: colors.graphiteText,
+    },
+    kpiSub: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      marginTop: 3,
+    },
+    metaCard: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 14,
+      marginBottom: 20,
+      ...shadows.card,
+    },
+    metaTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    metaLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+    },
+    metaLabel: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(9),
+      letterSpacing: 1,
+      color: colors.graphiteMuted,
+    },
+    metaTarget: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(15),
+      color: colors.graphiteText,
+    },
+    metaRight: {
+      alignItems: 'flex-end',
+    },
+    metaPercent: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(12),
+      color: colors.violetRoyal,
+    },
+    metaDays: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+    },
+    trackBar: {
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.surfaceContainer,
+      marginTop: 12,
+      overflow: 'hidden',
+    },
+    fillBar: {
+      height: '100%',
+      borderRadius: 4,
+      backgroundColor: colors.violetRoyal,
+    },
+    metaBottom: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginTop: 8,
+    },
+    metaSubText: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+    },
+    breakdownCard: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 14,
+      marginBottom: 20,
+      ...shadows.card,
+    },
+    breakdownTop: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 14,
+    },
+    atelierTag: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(9),
+      letterSpacing: 1.2,
+      color: colors.violetRoyal,
+    },
+    breakdownTitle: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(16),
+      color: colors.graphiteText,
+      marginTop: 2,
+    },
+    breakdownEmpty: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+    },
+    legendCol: {
+      gap: 14,
+    },
+    legendBlock: {
+      gap: 7,
+    },
+    legendRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    legendItemLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 9,
+    },
+    legendDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    legendName: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    legendShare: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+    },
+    legendAmount: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    shareTrack: {
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: colors.surfaceContainer,
+      overflow: 'hidden',
+    },
+    shareFill: {
+      height: '100%',
+      borderRadius: 3,
+    },
+    recentSection: {
+      marginBottom: 8,
+    },
+    recentHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 12,
+    },
+    recentTitle: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(16),
+      color: colors.graphiteText,
+    },
+    recentSub: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+      marginTop: 2,
+    },
+    recentEmpty: {
+      paddingVertical: 28,
+    },
+    viewAllRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 2,
+    },
+    viewAllText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(11),
+      color: colors.violetRoyal,
+    },
+    transactionItem: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 12,
+      marginBottom: 8,
+    },
+    txLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+      marginRight: 10,
+    },
+    txTextCol: {
+      flex: 1,
+    },
+    txIconCircle: {
+      width: 36,
+      height: 36,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.lavenderTint,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    txTitle: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    txMetaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 2,
+    },
+    txCategory: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+    },
+    txRight: {
+      alignItems: 'flex-end',
+    },
+    incomeText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(13),
+      color: colors.violetRoyal,
+    },
+    expenseText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(13),
+      color: colors.statusError,
+    },
+    txTime: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      marginTop: 2,
+    },
+  });

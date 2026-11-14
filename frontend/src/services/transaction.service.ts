@@ -8,6 +8,8 @@
 import { api } from './api';
 import { ApiResponse, Transaction, TransactionInput } from '../types';
 import { isWithinPeriod, PeriodKey } from '../utils/period';
+import { formatCurrency } from '../utils/formatters';
+
 
 export interface TransactionFilters {
   period?: PeriodKey;
@@ -89,7 +91,8 @@ export function filterTransactions(
     return (
       transaction.description.toLowerCase().includes(term) ||
       transaction.category.toLowerCase().includes(term) ||
-      (transaction.professional?.toLowerCase().includes(term) ?? false)
+      (transaction.professional?.toLowerCase().includes(term) ?? false) ||
+      String(transaction.grossAmount).includes(term) || transaction.grossAmount.toFixed(2).replace('.', ',').includes(term)
     );
   });
 }

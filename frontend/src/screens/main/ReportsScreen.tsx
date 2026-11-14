@@ -7,7 +7,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, typography, borderRadius, shadows } from '../../theme/theme';
+import { typography, borderRadius, useAppTheme } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { AdminOnlyState, ErrorState, LoadingState } from '../../components/ui/QueryState';
 import { useCashFlowReport, useFinancialSummary, useIsAdmin } from '../../hooks/useReports';
@@ -19,6 +19,10 @@ import { periodLabel } from '../../utils/period';
 import type { FinancialSummary } from '../../types';
 
 export default function ReportsScreen() {
+  const theme = useAppTheme();
+  const { colors } = theme;
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const isAdmin = useIsAdmin();
   const period = usePeriodStore((state) => state.period);
   const auditQuery = useAudit();
@@ -109,12 +113,12 @@ export default function ReportsScreen() {
           </View>
 
           <View style={styles.statement}>
-            <StatementRow label="Faturamento bruto" value={dre.faturamentoBruto} />
-            <StatementRow label="(−) Descontos concedidos" value={-dre.descontos} muted />
+            <StatementRow styles={styles} label="Faturamento bruto" value={dre.faturamentoBruto} />
+            <StatementRow styles={styles} label="(−) Descontos concedidos" value={-dre.descontos} muted />
             {/* Só aparece se houver: lançamento manual não tem taxa, e o extrato da
                 InfinitePay já chega líquido do que a maquininha reteve. */}
             {dre.taxas > 0 ? (
-              <StatementRow label="(−) Taxas de pagamento" value={-dre.taxas} muted />
+              <StatementRow styles={styles} label="(−) Taxas de pagamento" value={-dre.taxas} muted />
             ) : null}
             <View style={styles.statementDivider} />
 
@@ -122,6 +126,7 @@ export default function ReportsScreen() {
                 InfinitePay para a conta do salão, lido do extrato. */}
             {auditQuery.data ? (
               <StatementRow
+                styles={styles}
                 label="(−) Retirado para a conta do salão"
                 value={-auditQuery.data.saldoRetirado}
                 hint="Transferências da conta da InfinitePay, lidas do extrato"
@@ -254,7 +259,6 @@ export default function ReportsScreen() {
           </View>
         </View>
       </ScrollView>
-
     </View>
   );
 }
@@ -266,6 +270,7 @@ function formatDayLabel(isoDate: string): string {
 }
 
 interface StatementRowProps {
+  styles: ReturnType<typeof createStyles>;
   label: string;
   value: number;
   hint?: string;
@@ -273,7 +278,7 @@ interface StatementRowProps {
   emphasis?: boolean;
 }
 
-function StatementRow({ label, value, hint, muted, emphasis }: StatementRowProps) {
+function StatementRow({ styles, label, value, hint, muted, emphasis }: StatementRowProps) {
   return (
     <View style={styles.statementRow}>
       <View style={styles.statementLabelCol}>
@@ -295,255 +300,256 @@ function StatementRow({ label, value, hint, muted, emphasis }: StatementRowProps
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 110,
-  },
-  pageHeader: {
-    marginBottom: 16,
-  },
-  pageTitle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 26,
-    color: colors.graphiteText,
-  },
-  pageDesc: {
-    fontFamily: typography.fonts.body,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-    marginTop: 2,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 16,
-    marginBottom: 14,
-    ...shadows.card,
-  },
-  cardHeader: {
-    marginBottom: 14,
-  },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-  },
-  cardTitleCol: {
-    flex: 1,
-  },
-  iconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.lavenderTint,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  cardTitle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 17,
-    color: colors.graphiteText,
-  },
-  cardSub: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-    marginTop: 1,
-  },
-  statement: {
-    gap: 2,
-  },
-  statementRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: 6,
-  },
-  statementLabelCol: {
-    flex: 1,
-    marginRight: 10,
-  },
-  statementLabel: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  statementLabelEmphasis: {
-    fontFamily: typography.fonts.bodyBold,
-  },
-  statementHint: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    marginTop: 1,
-  },
-  statementValue: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  statementValueEmphasis: {
-    fontFamily: typography.fonts.bodyBold,
-    color: colors.primary,
-  },
-  statementValueMuted: {
-    color: colors.graphiteMuted,
-  },
-  statementDivider: {
-    height: 1,
-    backgroundColor: colors.borderWhisper,
-    marginVertical: 7,
-  },
-  resultRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: colors.lavenderTint,
-    borderRadius: borderRadius.md,
-    padding: 12,
-    marginTop: 4,
-  },
-  resultLabelCol: {
-    flex: 1,
-    marginRight: 10,
-  },
-  resultLabel: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  resultHint: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    marginTop: 2,
-  },
-  resultValue: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 20,
-  },
-  totalsFooter: {
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderWhisper,
-  },
-  totalsFooterText: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-  },
-  cashGrid: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
-  cashBox: {
-    flex: 1,
-    backgroundColor: colors.surfaceCanvas,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-  },
-  cashBoxHighlight: {
-    backgroundColor: colors.lavenderTint,
-    borderColor: colors.lavenderSubtle,
-  },
-  cashLabel: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  cashValue: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 14,
-    marginTop: 3,
-  },
-  cashEmpty: {
-    fontFamily: typography.fonts.body,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-    lineHeight: 18,
-  },
-  dailyList: {
-    marginTop: 4,
-  },
-  dailyTitle: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: colors.graphiteMuted,
-    textTransform: 'uppercase',
-    marginBottom: 9,
-  },
-  dailyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    marginBottom: 8,
-  },
-  dailyDate: {
-    width: 44,
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-  },
-  dailyTrack: {
-    flex: 1,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.surfaceContainer,
-    overflow: 'hidden',
-  },
-  dailyFill: {
-    height: '100%',
-    borderRadius: 3.5,
-  },
-  dailyAmount: {
-    width: 92,
-    textAlign: 'right',
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 11,
-  },
-  tipCard: {
-    flexDirection: 'row',
-    gap: 11,
-    backgroundColor: colors.lavenderLight,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.lavenderSubtle,
-    padding: 14,
-  },
-  tipIcon: {
-    marginTop: 1,
-  },
-  tipCol: {
-    flex: 1,
-  },
-  tipTitle: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 12,
-    color: colors.primary,
-  },
-  tipDesc: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteText,
-    marginTop: 4,
-    lineHeight: 17,
-  },
-});
+const createStyles = ({ colors, shadows, borderWidth, s }: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+    },
+    content: {
+      padding: 16,
+      paddingBottom: 110,
+    },
+    pageHeader: {
+      marginBottom: 16,
+    },
+    pageTitle: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(26),
+      color: colors.graphiteText,
+    },
+    pageDesc: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+      marginTop: 2,
+    },
+    card: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 16,
+      marginBottom: 14,
+      ...shadows.card,
+    },
+    cardHeader: {
+      marginBottom: 14,
+    },
+    cardTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 11,
+    },
+    cardTitleCol: {
+      flex: 1,
+    },
+    iconBox: {
+      width: 38,
+      height: 38,
+      borderRadius: borderRadius.md,
+      backgroundColor: colors.lavenderTint,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    cardTitle: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(17),
+      color: colors.graphiteText,
+    },
+    cardSub: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+      marginTop: 1,
+    },
+    statement: {
+      gap: 2,
+    },
+    statementRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      paddingVertical: 6,
+    },
+    statementLabelCol: {
+      flex: 1,
+      marginRight: 10,
+    },
+    statementLabel: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    statementLabelEmphasis: {
+      fontFamily: typography.fonts.bodyBold,
+    },
+    statementHint: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      marginTop: 1,
+    },
+    statementValue: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    statementValueEmphasis: {
+      fontFamily: typography.fonts.bodyBold,
+      color: colors.primary,
+    },
+    statementValueMuted: {
+      color: colors.graphiteMuted,
+    },
+    statementDivider: {
+      height: 1,
+      backgroundColor: colors.borderWhisper,
+      marginVertical: 7,
+    },
+    resultRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      backgroundColor: colors.lavenderTint,
+      borderRadius: borderRadius.md,
+      padding: 12,
+      marginTop: 4,
+    },
+    resultLabelCol: {
+      flex: 1,
+      marginRight: 10,
+    },
+    resultLabel: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    resultHint: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      marginTop: 2,
+    },
+    resultValue: {
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(20),
+    },
+    totalsFooter: {
+      marginTop: 12,
+      paddingTop: 10,
+      borderTopWidth: borderWidth,
+      borderTopColor: colors.borderWhisper,
+    },
+    totalsFooterText: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+    },
+    cashGrid: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 14,
+    },
+    cashBox: {
+      flex: 1,
+      backgroundColor: colors.surfaceCanvas,
+      borderRadius: borderRadius.md,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      paddingVertical: 10,
+      paddingHorizontal: 10,
+    },
+    cashBoxHighlight: {
+      backgroundColor: colors.lavenderTint,
+      borderColor: colors.lavenderSubtle,
+    },
+    cashLabel: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    cashValue: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(14),
+      marginTop: 3,
+    },
+    cashEmpty: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+      lineHeight: 18,
+    },
+    dailyList: {
+      marginTop: 4,
+    },
+    dailyTitle: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(10),
+      letterSpacing: 0.8,
+      color: colors.graphiteMuted,
+      textTransform: 'uppercase',
+      marginBottom: 9,
+    },
+    dailyRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 9,
+      marginBottom: 8,
+    },
+    dailyDate: {
+      width: 44,
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+    },
+    dailyTrack: {
+      flex: 1,
+      height: 7,
+      borderRadius: 3.5,
+      backgroundColor: colors.surfaceContainer,
+      overflow: 'hidden',
+    },
+    dailyFill: {
+      height: '100%',
+      borderRadius: 3.5,
+    },
+    dailyAmount: {
+      width: 92,
+      textAlign: 'right',
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(11),
+    },
+    tipCard: {
+      flexDirection: 'row',
+      gap: 11,
+      backgroundColor: colors.lavenderLight,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.lavenderSubtle,
+      padding: 14,
+    },
+    tipIcon: {
+      marginTop: 1,
+    },
+    tipCol: {
+      flex: 1,
+    },
+    tipTitle: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(12),
+      color: colors.primary,
+    },
+    tipDesc: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteText,
+      marginTop: 4,
+      lineHeight: 17,
+    },
+  });

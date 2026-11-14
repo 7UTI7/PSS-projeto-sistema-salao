@@ -2,7 +2,7 @@
 //
 // A conta nasce com troca de senha obrigatória e só funciona depois que a pessoa
 // confirma o e-mail — por isso a lista mostra "aguardando confirmação".
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, typography, borderRadius, shadows } from '../../theme/theme';
+import { typography, borderRadius, useAppTheme } from '../../theme/theme';
 import { AdminOnlyState, EmptyState, ErrorState, LoadingState } from '../../components/ui/QueryState';
 import { useCreateUser, useDeactivateUser, useUsers } from '../../hooks/useUsers';
 import { useIsAdmin } from '../../hooks/useReports';
@@ -33,6 +33,10 @@ const ROLES: { value: UserRole; label: string; hint: string }[] = [
 ];
 
 export default function TeamScreen() {
+  const theme = useAppTheme();
+  const { colors } = theme;
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const isAdmin = useIsAdmin();
   const currentUserId = useAuthStore((state) => state.user?.id);
 
@@ -200,7 +204,7 @@ export default function TeamScreen() {
               onPress={handleCreate}
             >
               {createMutation.isPending ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
+                <ActivityIndicator color={colors.onPrimary} size="small" />
               ) : (
                 <Text style={styles.primaryBtnText}>Criar conta</Text>
               )}
@@ -217,7 +221,7 @@ export default function TeamScreen() {
           activeOpacity={0.85}
           onPress={() => setShowForm(true)}
         >
-          <Ionicons name="person-add-outline" size={18} color="#FFFFFF" />
+          <Ionicons name="person-add-outline" size={18} color={colors.onPrimary} />
           <Text style={styles.addBtnText}>Adicionar integrante</Text>
         </TouchableOpacity>
       )}
@@ -300,237 +304,238 @@ export default function TeamScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  fill: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  header: {
-    marginBottom: 16,
-  },
-  title: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 22,
-    color: colors.graphiteText,
-  },
-  subtitle: {
-    fontFamily: typography.fonts.body,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  addBtn: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.md,
-    paddingVertical: 13,
-    marginBottom: 16,
-  },
-  addBtnText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: '#FFFFFF',
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 16,
-    marginBottom: 16,
-    ...shadows.card,
-  },
-  cardTitle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 16,
-    color: colors.graphiteText,
-    marginBottom: 12,
-  },
-  label: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 12,
-    color: colors.graphiteText,
-    marginBottom: 5,
-    marginTop: 10,
-  },
-  input: {
-    backgroundColor: colors.surfaceCanvas,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    color: colors.graphiteText,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-    fontFamily: typography.fonts.body,
-    fontSize: 13,
-  },
-  help: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    marginTop: 5,
-    lineHeight: 15,
-  },
-  roleOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    borderRadius: borderRadius.md,
-    padding: 11,
-    marginBottom: 7,
-  },
-  roleOptionSelected: {
-    borderColor: colors.lavenderSubtle,
-    backgroundColor: colors.lavenderTint,
-  },
-  roleTextCol: {
-    flex: 1,
-  },
-  roleLabel: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  roleHint: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    marginTop: 1,
-  },
-  formActions: {
-    marginTop: 14,
-    gap: 8,
-  },
-  primaryBtn: {
-    backgroundColor: colors.violetRoyal,
-    borderRadius: borderRadius.md,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  primaryBtnText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: '#FFFFFF',
-  },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  secondaryBtn: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    paddingVertical: 11,
-    alignItems: 'center',
-  },
-  secondaryBtnText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-  },
-  userCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 13,
-    marginBottom: 9,
-  },
-  userRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.lavenderTint,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarText: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 16,
-    color: colors.primary,
-  },
-  userInfo: {
-    flex: 1,
-  },
-  userName: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  userEmail: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-    marginTop: 1,
-  },
-  userMeta: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    marginTop: 1,
-  },
-  rolePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: borderRadius.xs,
-  },
-  rolePillAdmin: {
-    backgroundColor: colors.lavenderTint,
-  },
-  rolePillStaff: {
-    backgroundColor: colors.surfaceContainer,
-  },
-  rolePillText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  flagsRow: {
-    gap: 5,
-    marginTop: 9,
-  },
-  flag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  flagText: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-  },
-  deactivateBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 10,
-    paddingTop: 9,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderWhisper,
-  },
-  deactivateText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 11,
-    color: colors.statusError,
-  },
-});
+const createStyles = ({ colors, shadows, borderWidth, s }: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    fill: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    header: {
+      marginBottom: 16,
+    },
+    title: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(22),
+      color: colors.graphiteText,
+    },
+    subtitle: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+      marginTop: 4,
+      lineHeight: 18,
+    },
+    addBtn: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: colors.primary,
+      borderRadius: borderRadius.md,
+      paddingVertical: 13,
+      marginBottom: 16,
+    },
+    addBtnText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(13),
+      color: colors.onPrimary,
+    },
+    card: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 16,
+      marginBottom: 16,
+      ...shadows.card,
+    },
+    cardTitle: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(16),
+      color: colors.graphiteText,
+      marginBottom: 12,
+    },
+    label: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(12),
+      color: colors.graphiteText,
+      marginBottom: 5,
+      marginTop: 10,
+    },
+    input: {
+      backgroundColor: colors.surfaceCanvas,
+      borderRadius: borderRadius.md,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      color: colors.graphiteText,
+      paddingHorizontal: 13,
+      paddingVertical: 11,
+      fontFamily: typography.fonts.body,
+      fontSize: s(13),
+    },
+    help: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      marginTop: 5,
+      lineHeight: 15,
+    },
+    roleOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      borderRadius: borderRadius.md,
+      padding: 11,
+      marginBottom: 7,
+    },
+    roleOptionSelected: {
+      borderColor: colors.lavenderSubtle,
+      backgroundColor: colors.lavenderTint,
+    },
+    roleTextCol: {
+      flex: 1,
+    },
+    roleLabel: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    roleHint: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      marginTop: 1,
+    },
+    formActions: {
+      marginTop: 14,
+      gap: 8,
+    },
+    primaryBtn: {
+      backgroundColor: colors.violetRoyal,
+      borderRadius: borderRadius.md,
+      paddingVertical: 13,
+      alignItems: 'center',
+    },
+    primaryBtnText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(13),
+      color: colors.onPrimary,
+    },
+    btnDisabled: {
+      opacity: 0.6,
+    },
+    secondaryBtn: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.md,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      paddingVertical: 11,
+      alignItems: 'center',
+    },
+    secondaryBtnText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+    },
+    userCard: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 13,
+      marginBottom: 9,
+    },
+    userRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 11,
+    },
+    avatar: {
+      width: 40,
+      height: 40,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.lavenderTint,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    avatarText: {
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(16),
+      color: colors.primary,
+    },
+    userInfo: {
+      flex: 1,
+    },
+    userName: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    userEmail: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+      marginTop: 1,
+    },
+    userMeta: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      marginTop: 1,
+    },
+    rolePill: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: borderRadius.xs,
+    },
+    rolePillAdmin: {
+      backgroundColor: colors.lavenderTint,
+    },
+    rolePillStaff: {
+      backgroundColor: colors.surfaceContainer,
+    },
+    rolePillText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(8),
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    flagsRow: {
+      gap: 5,
+      marginTop: 9,
+    },
+    flag: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+    flagText: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+    },
+    deactivateBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      marginTop: 10,
+      paddingTop: 9,
+      borderTopWidth: borderWidth,
+      borderTopColor: colors.borderWhisper,
+    },
+    deactivateText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(11),
+      color: colors.statusError,
+    },
+  });

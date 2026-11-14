@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,7 +31,7 @@ import SettingsScreen from '../screens/main/SettingsScreen';
 import TeamScreen from '../screens/settings/TeamScreen';
 import CategoriesScreen from '../screens/settings/CategoriesScreen';
 
-import { colors, typography } from '../theme/theme';
+import { typography, useAppTheme } from '../theme/theme';
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -45,19 +45,9 @@ const TAB_ICONS: Record<keyof MainTabParamList, [keyof typeof Ionicons.glyphMap,
   Imports: ['cloud-upload', 'cloud-upload-outline'],
 };
 
-const stackHeaderOptions = {
-  headerShown: true,
-  headerTintColor: colors.primary,
-  headerStyle: { backgroundColor: colors.background },
-  headerTitleStyle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 18,
-    color: colors.graphiteText,
-  },
-  headerShadowVisible: false,
-} as const;
-
 function AuthNavigator() {
+  const { colors } = useAppTheme();
+
   return (
     <AuthStack.Navigator
       screenOptions={{
@@ -91,14 +81,16 @@ function AuthNavigator() {
 }
 
 function MainNavigator() {
+  const { colors, borderWidth } = useAppTheme();
+
   return (
     <MainTab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false, // O topo é controlado pelo StudioTopHeader dos protótipos
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
+          backgroundColor: colors.surfacePure,
           borderTopColor: colors.borderWhisper,
-          borderTopWidth: 1,
+          borderTopWidth: borderWidth,
           height: 64,
           paddingBottom: 6,
           paddingTop: 6,
@@ -115,7 +107,7 @@ function MainNavigator() {
 
           if (focused) {
             return (
-              <View style={styles.activePill}>
+              <View style={[styles.activePill, { backgroundColor: colors.lavenderTint }]}>
                 <Ionicons name={filled} size={19} color={colors.primary} />
               </View>
             );
@@ -141,6 +133,7 @@ export default function AppNavigator() {
   const loadGoal = useGoalStore((state) => state.loadGoal);
   const { isAuthenticated, mustChangePassword, isLoading, loadSession } =
     useAuthStore();
+  const { colors, isDarkMode } = useAppTheme();
 
   useEffect(() => {
     loadSession();
@@ -149,16 +142,40 @@ export default function AppNavigator() {
     void loadGoal();
   }, [loadSession, loadGoal]);
 
+  const stackHeaderOptions = {
+    headerShown: true,
+    headerTintColor: colors.primary,
+    headerStyle: { backgroundColor: colors.background },
+    headerTitleStyle: {
+      fontFamily: typography.fonts.headline,
+      fontSize: 18,
+      color: colors.graphiteText,
+    },
+    headerShadowVisible: false,
+  } as const;
+
+  const navigationTheme = {
+    ...(isDarkMode ? DarkTheme : DefaultTheme),
+    colors: {
+      ...(isDarkMode ? DarkTheme.colors : DefaultTheme.colors),
+      background: colors.background,
+      card: colors.surfacePure,
+      text: colors.graphiteText,
+      border: colors.borderWhisper,
+      primary: colors.primary,
+    },
+  };
+
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={navigationTheme}>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
           <RootStack.Screen name="Auth" component={AuthNavigator} />
@@ -209,7 +226,6 @@ export default function AppNavigator() {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -217,7 +233,6 @@ const styles = StyleSheet.create({
     width: 40,
     height: 26,
     borderRadius: 13,
-    backgroundColor: colors.lavenderTint,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 2,
