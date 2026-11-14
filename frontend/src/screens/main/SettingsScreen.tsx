@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -14,15 +15,19 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
 import { useGoalStore } from '../../store/goalStore';
-import { DEFAULT_API_URL } from '../../services/api';
 import { formatCurrency, parseAmountInput } from '../../utils/formatters';
-import { colors, typography } from '../../theme/theme';
+import { typography, useAppTheme } from '../../theme/theme';
 import { Card } from '../../components/ui/Card';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { A11yControls } from '../../components/ui/A11yControls';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const theme = useAppTheme();
+  const { colors } = theme;
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const { user, logout } = useAuthStore();
   const isAdmin = user?.role === 'admin';
 
@@ -32,9 +37,15 @@ export default function SettingsScreen() {
   const [goalDraft, setGoalDraft] = useState<string | null>(null);
 
   function handleLogout() {
+    if (Platform.OS === 'web') {
+      if (window.confirm('Deseja realmente encerrar a sua sessão?')) {
+        void logout();
+      }
+      return;
+    }
     Alert.alert('Sair da Conta', 'Deseja realmente encerrar sua sessão?', [
       { text: 'Cancelar', style: 'cancel' },
-      { text: 'Sair', style: 'destructive', onPress: () => logout() },
+      { text: 'Sair', style: 'destructive', onPress: () => void logout() },
     ]);
   }
 
@@ -144,7 +155,7 @@ export default function SettingsScreen() {
                   activeOpacity={0.8}
                   onPress={handleSaveGoal}
                 >
-                  <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+                  <Ionicons name="checkmark" size={16} color={colors.onPrimary} />
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.goalCancelBtn}
@@ -168,6 +179,14 @@ export default function SettingsScreen() {
         </View>
       </Card>
 
+      {/* Aparência & Acessibilidade */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Aparência & Acessibilidade</Text>
+      </View>
+      <Card style={styles.a11yCard}>
+        <A11yControls />
+      </Card>
+
       {/* Botão de Logout */}
       <View style={styles.logoutContainer}>
         <Button
@@ -176,161 +195,166 @@ export default function SettingsScreen() {
           icon={<Ionicons name="log-out-outline" size={18} color="#FFFFFF" />}
           onPress={handleLogout}
         />
-
-        <Text style={styles.apiFooter}>API: {DEFAULT_API_URL}</Text>
       </View>
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  header: {
-    marginBottom: 16,
-  },
-  title: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 24,
-    color: colors.graphiteText,
-  },
-  subtitle: {
-    fontFamily: typography.fonts.body,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-    marginTop: 2,
-  },
-  profileCard: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-  },
-  avatar: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  avatarText: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 24,
-    color: '#FFFFFF',
-  },
-  userName: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 20,
-    color: colors.graphiteText,
-  },
-  userEmail: {
-    fontFamily: typography.fonts.body,
-    fontSize: 13,
-    color: colors.graphiteMuted,
-    marginTop: 2,
-  },
-  roleBadge: {
-    marginTop: 12,
-  },
-  sectionHeader: {
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 16,
-    color: colors.graphiteText,
-  },
-  menuCard: {
-    padding: 6,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-  },
-  menuIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.lavenderTint,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 14,
-  },
-  menuContent: {
-    flex: 1,
-  },
-  menuLabel: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 14,
-    color: colors.graphiteText,
-  },
-  menuSub: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-    marginTop: 2,
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: colors.borderWhisper,
-    marginHorizontal: 12,
-  },
-  logoutContainer: {
-    marginTop: 4,
-  },
-  apiFooter: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    textAlign: 'center',
-    marginTop: 14,
-  },
-  goalEditRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 6,
-  },
-  goalInput: {
-    flex: 1,
-    backgroundColor: colors.surfaceCanvas,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    fontFamily: typography.fonts.body,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  goalSaveBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  goalCancelBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: colors.surfaceContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+const createStyles = ({ colors, borderWidth, s }: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    content: {
+      padding: 16,
+      paddingBottom: 40,
+    },
+    header: {
+      marginBottom: 16,
+    },
+    title: {
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(24),
+      color: colors.graphiteText,
+    },
+    subtitle: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+      marginTop: 2,
+    },
+    profileCard: {
+      alignItems: 'center',
+      paddingVertical: 24,
+      marginBottom: 20,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+    },
+    avatar: {
+      width: 68,
+      height: 68,
+      borderRadius: 34,
+      backgroundColor: colors.primary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    avatarText: {
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(24),
+      color: colors.onPrimary,
+    },
+    userName: {
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(20),
+      color: colors.graphiteText,
+    },
+    userEmail: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(13),
+      color: colors.graphiteMuted,
+      marginTop: 2,
+    },
+    roleBadge: {
+      marginTop: 12,
+    },
+    sectionHeader: {
+      marginBottom: 10,
+    },
+    sectionTitle: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(16),
+      color: colors.graphiteText,
+    },
+    menuCard: {
+      padding: 6,
+      marginBottom: 24,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+    },
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 14,
+      paddingHorizontal: 12,
+    },
+    menuIconBox: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.lavenderTint,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 14,
+    },
+    menuContent: {
+      flex: 1,
+    },
+    menuLabel: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(14),
+      color: colors.graphiteText,
+    },
+    menuSub: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+      marginTop: 2,
+    },
+    menuDivider: {
+      height: 1,
+      backgroundColor: colors.borderWhisper,
+      marginHorizontal: 12,
+    },
+    a11yCard: {
+      padding: 16,
+      marginBottom: 24,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+    },
+    logoutContainer: {
+      marginTop: 4,
+    },
+    apiFooter: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      textAlign: 'center',
+      marginTop: 14,
+    },
+    goalEditRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 6,
+    },
+    goalInput: {
+      flex: 1,
+      backgroundColor: colors.surfaceCanvas,
+      borderRadius: 8,
+      borderWidth,
+      borderColor: colors.primary,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      fontFamily: typography.fonts.body,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    goalSaveBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    goalCancelBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 8,
+      backgroundColor: colors.surfaceContainer,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  }); 

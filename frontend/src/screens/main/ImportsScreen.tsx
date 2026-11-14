@@ -28,7 +28,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
-import { colors, typography, borderRadius, shadows } from '../../theme/theme';
+import { typography, borderRadius, useAppTheme, AppColors } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { AdminOnlyState, ErrorState } from '../../components/ui/QueryState';
 import { useImportBatches, useRollbackImport } from '../../hooks/useImports';
@@ -81,6 +81,10 @@ const REASONS: AuditReason[] = ['dinheiro', 'taxa', 'gorjeta', 'estorno', 'outro
 
 export default function ImportsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const theme = useAppTheme();
+  const { colors } = theme;
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
   const isAdmin = useIsAdmin();
   const period = usePeriodStore((state) => state.period);
   const setPeriod = usePeriodStore((state) => state.setPeriod);
@@ -308,9 +312,7 @@ export default function ImportsScreen() {
                 </Text>
               </TouchableOpacity>
 
-              {/* Tirar o arquivo escolhido. Tocar na área troca por outro, mas quem
-                  pegou o errado às vezes só quer deixar o campo vazio e reler a dica de
-                  onde exportar — sem precisar escolher algo para se livrar do engano. */}
+              {/* Tirar o arquivo escolhido. */}
               {picked ? (
                 <TouchableOpacity
                   style={styles.removeFileBtn}
@@ -333,10 +335,10 @@ export default function ImportsScreen() {
           onPress={handleSubmit}
         >
           {busy ? (
-            <ActivityIndicator color="#FFFFFF" size="small" />
+            <ActivityIndicator color={colors.onPrimary} size="small" />
           ) : (
             <>
-              <Ionicons name="git-compare" size={18} color="#FFFFFF" />
+              <Ionicons name="git-compare" size={18} color={colors.onPrimary} />
               <Text style={styles.primaryActionText}>Conferir e importar</Text>
             </>
           )}
@@ -372,7 +374,7 @@ export default function ImportsScreen() {
           <ErrorState error={auditQuery.error} onRetry={auditQuery.refetch} />
         ) : audit ? (
           <View style={styles.card}>
-            <AuditVerdict audit={audit} />
+            <AuditVerdict audit={audit} styles={styles} colors={colors} />
 
             {/* A comparação, sempre visível: é o que explica o veredito. */}
             <View style={styles.previewGrid}>
@@ -430,7 +432,7 @@ export default function ImportsScreen() {
                 </Text>
                 {audit.adjustments.map((entry) => (
                   <Text key={entry.id} style={styles.skippedItem}>
-                    • {formatCurrency(entry.signedAmount)} —{' '}
+                    − {formatCurrency(entry.signedAmount)} —{' '}
                     {entry.reason ? AUDIT_REASON_LABELS[entry.reason].label : 'Ajuste'}:{' '}
                     {entry.description}
                   </Text>
@@ -445,13 +447,12 @@ export default function ImportsScreen() {
                   style={styles.primaryActionBtn}
                   activeOpacity={0.85}
                   onPress={() => {
-                    // Já vem preenchido com o que falta: é o caso comum.
                     setEntryAmount(Math.abs(audit.diferenca).toFixed(2).replace('.', ','));
                     setEntryDirection(audit.diferenca > 0 ? 'faltou_entrar' : 'entrou_a_mais');
                     setReason('dinheiro');
                   }}
                 >
-                  <Ionicons name="create-outline" size={18} color="#FFFFFF" />
+                  <Ionicons name="create-outline" size={18} color={colors.onPrimary} />
                   <Text style={styles.primaryActionText}>Explicar a diferença</Text>
                 </TouchableOpacity>
               ) : (
@@ -536,10 +537,10 @@ export default function ImportsScreen() {
                       onPress={handleAddEntry}
                     >
                       {entryMutation.isPending ? (
-                        <ActivityIndicator color="#FFFFFF" size="small" />
+                        <ActivityIndicator color={colors.onPrimary} size="small" />
                       ) : (
                         <>
-                          <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                          <Ionicons name="checkmark-circle" size={18} color={colors.onPrimary} />
                           <Text style={styles.primaryActionText}>Lançar e fechar</Text>
                         </>
                       )}
@@ -585,8 +586,7 @@ export default function ImportsScreen() {
           </View>
         ) : null}
 
-        {/* HISTÓRICO: de onde se desfaz um lote. Mostra os 3 últimos fechado, porque
-            cada mês conferido rende dois lotes e a lista cresce rápido. */}
+        {/* HISTÓRICO: de onde se desfaz um lote. */}
         <View style={styles.sectionHeaderRow}>
           <View style={styles.summaryTitleRow}>
             <Ionicons name="time-outline" size={18} color={colors.primary} />
@@ -619,8 +619,8 @@ export default function ImportsScreen() {
                     {importSourceLabels[batch.source]} · {formatDate(batch.createdAt)}
                   </Text>
                 </View>
-                <View style={[styles.batchStatusPill, batchStatusStyle(batch.status)]}>
-                  <Text style={[styles.batchStatusText, batchStatusTextStyle(batch.status)]}>
+                <View style={[styles.batchStatusPill, batchStatusStyle(batch.status, colors)]}>
+                  <Text style={[styles.batchStatusText, batchStatusTextStyle(batch.status, colors)]}>
                     {importBatchStatusLabels[batch.status]}
                   </Text>
                 </View>
@@ -687,29 +687,29 @@ export default function ImportsScreen() {
   );
 }
 
-function batchStatusStyle(status: ImportBatch['status']) {
+function batchStatusStyle(status: ImportBatch['status'], colors: AppColors) {
   if (status === 'processed') return { backgroundColor: colors.statusSuccessBg };
   if (status === 'failed') return { backgroundColor: colors.statusErrorBg };
   if (status === 'rolled_back') return { backgroundColor: colors.surfaceContainerHigh };
   return { backgroundColor: colors.statusWarningBg };
 }
 
-function batchStatusTextStyle(status: ImportBatch['status']) {
+function batchStatusTextStyle(status: ImportBatch['status'], colors: AppColors) {
   if (status === 'processed') return { color: colors.statusSuccess };
   if (status === 'failed') return { color: colors.statusError };
   if (status === 'rolled_back') return { color: colors.graphiteMuted };
   return { color: colors.statusWarning };
 }
 
-
-/**
- * O veredito em uma frase, pelo desfecho que o servidor mandou.
- *
- * `fonte_ausente` tem texto próprio de propósito: não é divergência a justificar, é
- * arquivo faltando. Oferecer "explique a diferença" aí pediria para ela justificar o
- * valor inteiro do extrato, e um ajuste desse tamanho falsearia a auditoria.
- */
-function AuditVerdict({ audit }: { audit: AuditSummary }) {
+function AuditVerdict({
+  audit,
+  styles,
+  colors,
+}: {
+  audit: AuditSummary;
+  styles: ReturnType<typeof createStyles>;
+  colors: AppColors;
+}) {
   if (audit.outcome === 'aprovada') {
     return (
       <View style={styles.infoBanner}>
@@ -753,7 +753,6 @@ function AuditVerdict({ audit }: { audit: AuditSummary }) {
   );
 }
 
-/** Uma linha por mês tocado pela submissão, para o alerta de conclusão. */
 function summarizeSubmission(audits: AuditSummary[]): string {
   if (audits.length === 0) return 'Arquivos importados.';
 
@@ -766,562 +765,563 @@ function summarizeSubmission(audits: AuditSummary[]): string {
     .join('\n');
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    flex: 1,
-  },
-  content: {
-    padding: 16,
-    paddingBottom: 48,
-  },
-  pageHeader: {
-    marginBottom: 16,
-  },
-  pageTitle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 26,
-    color: colors.graphiteText,
-  },
-  pageDesc: {
-    fontFamily: typography.fonts.body,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 16,
-    marginBottom: 14,
-    ...shadows.card,
-  },
-  fieldLabel: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    color: colors.graphiteMuted,
-    marginBottom: 10,
-  },
-  fieldHelp: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    marginTop: 9,
-    lineHeight: 15,
-  },
-  commissionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  stepBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.lavenderTint,
-    borderWidth: 1,
-    borderColor: colors.lavenderSubtle,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  commissionValueBox: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  commissionValue: {
-    fontFamily: typography.fonts.headlineBold,
-    fontSize: 24,
-    color: colors.primary,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  serviceTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 11,
-    flex: 1,
-  },
-  serviceTitleCol: {
-    flex: 1,
-  },
-  serviceIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.lavenderTint,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  serviceName: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 16,
-    color: colors.graphiteText,
-  },
-  serviceSub: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-    marginTop: 1,
-  },
-  serviceTag: {
-    backgroundColor: colors.lavenderTint,
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: borderRadius.full,
-  },
-  serviceTagText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 9,
-    color: colors.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  explanation: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteText,
-    lineHeight: 17,
-    marginBottom: 12,
-  },
-  dropzone: {
-    backgroundColor: colors.surfaceCanvas,
-    borderRadius: borderRadius.md,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: colors.lavenderSubtle,
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  dropzoneSelected: {
-    borderStyle: 'solid',
-    borderColor: colors.violetRoyal,
-    backgroundColor: colors.lavenderLight,
-  },
-  uploadIconCircle: {
-    width: 46,
-    height: 46,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.lavenderTint,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 9,
-  },
-  uploadTitle: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-    textAlign: 'center',
-  },
-  uploadSub: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    textAlign: 'center',
-    marginTop: 4,
-    lineHeight: 15,
-  },
-  loadingCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 16,
-    marginBottom: 14,
-  },
-  loadingText: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-  },
-  previewCard: {
-    borderColor: colors.lavenderSubtle,
-    backgroundColor: colors.lavenderLight,
-  },
-  previewHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  previewTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  previewTitle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 16,
-    color: colors.graphiteText,
-  },
-  previewSource: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 9,
-    color: colors.primary,
-    backgroundColor: colors.lavenderTint,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: borderRadius.full,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  previewGrid: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  previewBox: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    paddingVertical: 10,
-    paddingHorizontal: 11,
-  },
-  previewBoxHighlight: {
-    borderColor: colors.lavenderSubtle,
-    backgroundColor: colors.lavenderTint,
-  },
-  previewLabel: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 9,
-    color: colors.graphiteMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  previewValue: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 15,
-    color: colors.graphiteText,
-    marginTop: 3,
-  },
-  previewPeriod: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-    marginTop: 4,
-    marginBottom: 4,
-  },
-  warnBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 7,
-    backgroundColor: colors.statusWarningBg,
-    borderRadius: borderRadius.md,
-    padding: 10,
-    marginBottom: 10,
-  },
-  warnText: {
-    flex: 1,
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 11,
-    color: colors.statusWarning,
-    lineHeight: 16,
-  },
-  infoBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 7,
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 10,
-    marginTop: 6,
-  },
-  infoText: {
-    flex: 1,
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteText,
-    lineHeight: 16,
-  },
-  skippedBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 11,
-    marginTop: 8,
-  },
-  skippedTitle: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 11,
-    color: colors.statusWarning,
-    marginBottom: 5,
-  },
-  skippedItem: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    lineHeight: 16,
-  },
-  previewActions: {
-    marginTop: 14,
-    gap: 9,
-  },
-  primaryActionBtn: {
-    backgroundColor: colors.violetRoyal,
-    borderRadius: borderRadius.md,
-    paddingVertical: 13,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  primaryActionText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-  btnDisabled: {
-    opacity: 0.5,
-  },
-  secondaryActionBtn: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    paddingVertical: 11,
-  },
-  secondaryActionText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-  },
-  sectionHeaderRow: {
-    marginTop: 6,
-    marginBottom: 10,
-  },
-  summaryTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
-  },
-  summaryTitle: {
-    fontFamily: typography.fonts.headline,
-    fontSize: 17,
-    color: colors.graphiteText,
-  },
-  historyLoader: {
-    marginVertical: 20,
-  },
-  historyEmpty: {
-    fontFamily: typography.fonts.body,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-    lineHeight: 18,
-  },
-  batchCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    padding: 13,
-    marginBottom: 9,
-  },
-  batchHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 9,
-  },
-  batchTitleCol: {
-    flex: 1,
-  },
-  batchFile: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  batchMeta: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    marginTop: 2,
-  },
-  batchStatusPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: borderRadius.xs,
-  },
-  batchStatusText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  batchStats: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 9,
-  },
-  batchStat: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-  },
-  batchStatStrong: {
-    fontFamily: typography.fonts.bodyBold,
-    color: colors.graphiteText,
-  },
-  batchError: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.statusError,
-    marginTop: 7,
-    lineHeight: 15,
-  },
-  rollbackBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: 10,
-    paddingTop: 9,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderWhisper,
-  },
-  rollbackText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 11,
-    color: colors.statusError,
-  },
-  tipCard: {
-    flexDirection: 'row',
-    gap: 11,
-    backgroundColor: colors.lavenderLight,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    borderColor: colors.lavenderSubtle,
-    padding: 14,
-    marginTop: 8,
-  },
-  tipIcon: {
-    marginTop: 1,
-  },
-  tipCol: {
-    flex: 1,
-  },
-  tipTitle: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 12,
-    color: colors.primary,
-  },
-  tipDesc: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteText,
-    marginTop: 4,
-    lineHeight: 17,
-  },
-  correctionBox: {
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: colors.surfaceContainer,
-  },
-  reasonRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: borderRadius.md,
-  },
-  reasonRowActive: {
-    backgroundColor: colors.surfaceContainer,
-  },
-  reasonCol: {
-    flex: 1,
-  },
-  reasonLabel: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  reasonHelp: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-    marginTop: 2,
-    lineHeight: 15,
-  },
-  directionRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  directionBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.surfaceContainer,
-    alignItems: 'center',
-  },
-  directionBtnActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.surfaceContainer,
-  },
-  directionText: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-  },
-  directionTextActive: {
-    color: colors.primary,
-  },
-  fieldSpacing: {
-    marginTop: 16,
-  },
-  textInput: {
-    backgroundColor: colors.surfaceCanvas,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontFamily: typography.fonts.body,
-    fontSize: 13,
-    color: colors.graphiteText,
-  },
-  sectionHeaderCount: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-  },
-  removeFileBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    marginTop: 10,
-    paddingVertical: 8,
-  },
-  removeFileText: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 12,
-    color: colors.statusError,
-  },
-});
+const createStyles = ({ colors, shadows, borderWidth, s }: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+    },
+    content: {
+      padding: 16,
+      paddingBottom: 48,
+    },
+    pageHeader: {
+      marginBottom: 16,
+    },
+    pageTitle: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(26),
+      color: colors.graphiteText,
+    },
+    pageDesc: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+      marginTop: 4,
+      lineHeight: 18,
+    },
+    card: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 16,
+      marginBottom: 14,
+      ...shadows.card,
+    },
+    fieldLabel: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(10),
+      letterSpacing: 0.8,
+      color: colors.graphiteMuted,
+      marginBottom: 10,
+    },
+    fieldHelp: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      marginTop: 9,
+      lineHeight: 15,
+    },
+    commissionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    stepBtn: {
+      width: 38,
+      height: 38,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.lavenderTint,
+      borderWidth,
+      borderColor: colors.lavenderSubtle,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    commissionValueBox: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    commissionValue: {
+      fontFamily: typography.fonts.headlineBold,
+      fontSize: s(24),
+      color: colors.primary,
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    serviceTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 11,
+      flex: 1,
+    },
+    serviceTitleCol: {
+      flex: 1,
+    },
+    serviceIconBox: {
+      width: 38,
+      height: 38,
+      borderRadius: borderRadius.md,
+      backgroundColor: colors.lavenderTint,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    serviceName: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(16),
+      color: colors.graphiteText,
+    },
+    serviceSub: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+      marginTop: 1,
+    },
+    serviceTag: {
+      backgroundColor: colors.lavenderTint,
+      paddingHorizontal: 9,
+      paddingVertical: 3,
+      borderRadius: borderRadius.full,
+    },
+    serviceTagText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(9),
+      color: colors.primary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    explanation: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteText,
+      lineHeight: 17,
+      marginBottom: 12,
+    },
+    dropzone: {
+      backgroundColor: colors.surfaceCanvas,
+      borderRadius: borderRadius.md,
+      borderWidth: 1.5,
+      borderStyle: 'dashed',
+      borderColor: colors.lavenderSubtle,
+      paddingVertical: 20,
+      paddingHorizontal: 16,
+      alignItems: 'center',
+    },
+    dropzoneSelected: {
+      borderStyle: 'solid',
+      borderColor: colors.violetRoyal,
+      backgroundColor: colors.lavenderLight,
+    },
+    uploadIconCircle: {
+      width: 46,
+      height: 46,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.lavenderTint,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 9,
+    },
+    uploadTitle: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+      textAlign: 'center',
+    },
+    uploadSub: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      textAlign: 'center',
+      marginTop: 4,
+      lineHeight: 15,
+    },
+    loadingCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 16,
+      marginBottom: 14,
+    },
+    loadingText: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+    },
+    previewCard: {
+      borderColor: colors.lavenderSubtle,
+      backgroundColor: colors.lavenderLight,
+    },
+    previewHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    previewTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+    },
+    previewTitle: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(16),
+      color: colors.graphiteText,
+    },
+    previewSource: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(9),
+      color: colors.primary,
+      backgroundColor: colors.lavenderTint,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: borderRadius.full,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    previewGrid: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 8,
+    },
+    previewBox: {
+      flex: 1,
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.md,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      paddingVertical: 10,
+      paddingHorizontal: 11,
+    },
+    previewBoxHighlight: {
+      borderColor: colors.lavenderSubtle,
+      backgroundColor: colors.lavenderTint,
+    },
+    previewLabel: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(9),
+      color: colors.graphiteMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    previewValue: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(15),
+      color: colors.graphiteText,
+      marginTop: 3,
+    },
+    previewPeriod: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+      marginTop: 4,
+      marginBottom: 4,
+    },
+    warnBanner: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 7,
+      backgroundColor: colors.statusWarningBg,
+      borderRadius: borderRadius.md,
+      padding: 10,
+      marginBottom: 10,
+    },
+    warnText: {
+      flex: 1,
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(11),
+      color: colors.statusWarning,
+      lineHeight: 16,
+    },
+    infoBanner: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 7,
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.md,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 10,
+      marginTop: 6,
+    },
+    infoText: {
+      flex: 1,
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteText,
+      lineHeight: 16,
+    },
+    skippedBox: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.md,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 11,
+      marginTop: 8,
+    },
+    skippedTitle: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(11),
+      color: colors.statusWarning,
+      marginBottom: 5,
+    },
+    skippedItem: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      lineHeight: 16,
+    },
+    previewActions: {
+      marginTop: 14,
+      gap: 9,
+    },
+    primaryActionBtn: {
+      backgroundColor: colors.violetRoyal,
+      borderRadius: borderRadius.md,
+      paddingVertical: 13,
+      paddingHorizontal: 14,
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+    },
+    primaryActionText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(13),
+      color: colors.onPrimary,
+      textAlign: 'center',
+    },
+    btnDisabled: {
+      opacity: 0.5,
+    },
+    secondaryActionBtn: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.md,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      paddingVertical: 11,
+    },
+    secondaryActionText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+    },
+    sectionHeaderRow: {
+      marginTop: 6,
+      marginBottom: 10,
+    },
+    summaryTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+    },
+    summaryTitle: {
+      fontFamily: typography.fonts.headline,
+      fontSize: s(17),
+      color: colors.graphiteText,
+    },
+    historyLoader: {
+      marginVertical: 20,
+    },
+    historyEmpty: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+      lineHeight: 18,
+    },
+    batchCard: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      padding: 13,
+      marginBottom: 9,
+    },
+    batchHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      gap: 9,
+    },
+    batchTitleCol: {
+      flex: 1,
+    },
+    batchFile: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    batchMeta: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      marginTop: 2,
+    },
+    batchStatusPill: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: borderRadius.xs,
+    },
+    batchStatusText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(8),
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    batchStats: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+      marginTop: 9,
+    },
+    batchStat: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+    },
+    batchStatStrong: {
+      fontFamily: typography.fonts.bodyBold,
+      color: colors.graphiteText,
+    },
+    batchError: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.statusError,
+      marginTop: 7,
+      lineHeight: 15,
+    },
+    rollbackBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      marginTop: 10,
+      paddingTop: 9,
+      borderTopWidth: borderWidth,
+      borderTopColor: colors.borderWhisper,
+    },
+    rollbackText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(11),
+      color: colors.statusError,
+    },
+    tipCard: {
+      flexDirection: 'row',
+      gap: 11,
+      backgroundColor: colors.lavenderLight,
+      borderRadius: borderRadius.lg,
+      borderWidth,
+      borderColor: colors.lavenderSubtle,
+      padding: 14,
+      marginTop: 8,
+    },
+    tipIcon: {
+      marginTop: 1,
+    },
+    tipCol: {
+      flex: 1,
+    },
+    tipTitle: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(12),
+      color: colors.primary,
+    },
+    tipDesc: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteText,
+      marginTop: 4,
+      lineHeight: 17,
+    },
+    correctionBox: {
+      marginTop: 14,
+      paddingTop: 14,
+      borderTopWidth: borderWidth,
+      borderTopColor: colors.surfaceContainer,
+    },
+    reasonRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 10,
+      paddingVertical: 10,
+      paddingHorizontal: 10,
+      borderRadius: borderRadius.md,
+    },
+    reasonRowActive: {
+      backgroundColor: colors.surfaceContainer,
+    },
+    reasonCol: {
+      flex: 1,
+    },
+    reasonLabel: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    reasonHelp: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+      marginTop: 2,
+      lineHeight: 15,
+    },
+    directionRow: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    directionBtn: {
+      flex: 1,
+      paddingVertical: 10,
+      borderRadius: borderRadius.md,
+      borderWidth,
+      borderColor: colors.surfaceContainer,
+      alignItems: 'center',
+    },
+    directionBtnActive: {
+      borderColor: colors.primary,
+      backgroundColor: colors.surfaceContainer,
+    },
+    directionText: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+    },
+    directionTextActive: {
+      color: colors.primary,
+    },
+    fieldSpacing: {
+      marginTop: 16,
+    },
+    textInput: {
+      backgroundColor: colors.surfaceCanvas,
+      borderRadius: borderRadius.md,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      fontFamily: typography.fonts.body,
+      fontSize: s(13),
+      color: colors.graphiteText,
+    },
+    sectionHeaderCount: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+    },
+    removeFileBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      marginTop: 10,
+      paddingVertical: 8,
+    },
+    removeFileText: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(12),
+      color: colors.statusError,
+    },
+  });
