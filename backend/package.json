@@ -30,7 +30,7 @@
     "fflate": "^0.8.3",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.19.0",
+    "mongoose": "^8.24.7",
     "multer": "^2.5.0",
     "nodemailer": "^7.0.9",
     "pino": "^9.14.0",
