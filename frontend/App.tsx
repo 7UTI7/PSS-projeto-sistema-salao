@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -11,7 +11,7 @@ import {
   Roboto_700Bold,
 } from '@expo-google-fonts/roboto';
 import AppNavigator from './src/navigation/AppNavigator';
-import { colors } from './src/theme/theme';
+import { useAppTheme } from './src/theme/theme';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,6 +23,8 @@ const queryClient = new QueryClient({
 });
 
 export default function App() {
+  const { colors, isDarkMode, fontScale } = useAppTheme();
+
   const [fontsLoaded] = useFonts({
     Roboto_400Regular,
     Roboto_500Medium,
@@ -30,9 +32,15 @@ export default function App() {
     Roboto_700Bold,
   });
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    document.body.style.backgroundColor = colors.background;
+    document.body.style.zoom = String(fontScale);
+  }, [colors.background, fontScale]);
+
   if (!fontsLoaded) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
         <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
@@ -41,7 +49,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <StatusBar style="dark" />
+        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
         <AppNavigator />
       </QueryClientProvider>
     </SafeAreaProvider>
@@ -51,7 +59,6 @@ export default function App() {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },

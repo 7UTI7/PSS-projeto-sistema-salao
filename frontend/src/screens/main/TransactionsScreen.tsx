@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/types';
-import { colors, typography, borderRadius, shadows } from '../../theme/theme';
+import { typography, borderRadius, useAppTheme, AppColors } from '../../theme/theme';
 import { StudioTopHeader } from '../../components/ui/StudioTopHeader';
 import { FloatingActionButton } from '../../components/ui/FloatingActionButton';
 import { SearchBar } from '../../components/ui/SearchBar';
@@ -40,8 +40,6 @@ type TypeFilter = 'todos' | TransactionType;
 const TYPE_FILTERS: { key: TypeFilter; label: string }[] = [
   { key: 'todos', label: 'Todos' },
   { key: 'receita', label: 'Receitas' },
-  // "Saídas" e não "Despesas": o que sai são as retiradas lidas do extrato e os
-  // ajustes de auditoria, não despesa lançada à mão.
   { key: 'despesa', label: 'Saídas' },
 ];
 
@@ -49,6 +47,10 @@ export default function TransactionsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('todos');
+
+  const theme = useAppTheme();
+  const { colors } = theme;
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const period = usePeriodStore((state) => state.period);
   const isAdmin = useAuthStore((state) => state.user?.role === 'admin');
@@ -66,10 +68,6 @@ export default function TransactionsScreen() {
   const settleMutation = useSettleTransaction();
   const deleteMutation = useDeleteTransaction();
 
-  // O resumo vem do servidor, da mesma função que alimenta o Painel. Antes era somado
-  // aqui no cliente, com outra regra, e por isso as duas telas mostravam valores
-  // diferentes para o mesmo mês. É o total do MÊS, não do filtro da lista: o filtro
-  // muda o que aparece na lista, não a conta do período.
   const auditQuery = useAudit();
   const audit = auditQuery.data;
 
@@ -112,9 +110,6 @@ export default function TransactionsScreen() {
     const isIncome = item.type === 'receita';
     const amount = isIncome ? item.grossAmount - item.discountAmount : item.grossAmount;
     const isCancelled = item.status === 'cancelada';
-    // Lançamento importado é o espelho de uma linha do arquivo: editar faz o total
-    // divergir da origem, e excluir deixa o externalId gravado, o que impede a linha de
-    // voltar no reenvio. Quem desfaz é o "Desfazer este lote", na tela de Importar.
     const isImported = item.origin !== 'manual';
 
     return (
@@ -163,16 +158,14 @@ export default function TransactionsScreen() {
               {isIncome ? '+ ' : '- '}
               {formatCurrency(amount)}
             </Text>
-            <View style={[styles.statusPill, statusPillStyle(item.status)]}>
-              <Text style={[styles.statusText, statusTextStyle(item.status)]}>
+            <View style={[styles.statusPill, statusPillStyle(item.status, colors)]}>
+              <Text style={[styles.statusText, statusTextStyle(item.status, colors)]}>
                 {transactionStatusLabels[item.status]}
               </Text>
             </View>
           </View>
         </View>
 
-        {/* Só o que entrou de fato. Taxa não existe em lançamento: o que a maquininha
-            retém já vem descontado no extrato. */}
         {isAdmin && isIncome && !isCancelled ? (
           <View style={styles.breakdownRow}>
             <Text style={styles.breakdownItem}>
@@ -237,7 +230,7 @@ export default function TransactionsScreen() {
         <SearchBar
           value={search}
           onChangeText={setSearch}
-          placeholder="Buscar por serviço, categoria ou profissional..."
+          placeholder="Buscar por serviço, categoria, preço ou profissional..."
           containerStyle={styles.searchBar}
         />
 
@@ -258,8 +251,6 @@ export default function TransactionsScreen() {
           })}
         </View>
 
-        {/* Resumo do MÊS, nos mesmos três números do Painel: vem do servidor, não é
-            somado aqui. Só a administradora tem acesso ao resumo do estúdio. */}
         {isAdmin && audit ? (
           <View style={styles.summaryRow}>
             <View style={styles.summaryBox}>
@@ -315,236 +306,237 @@ export default function TransactionsScreen() {
   );
 }
 
-function statusPillStyle(status: Transaction['status']) {
+function statusPillStyle(status: Transaction['status'], colors: AppColors) {
   if (status === 'liquidada') return { backgroundColor: colors.statusSuccessBg };
   if (status === 'cancelada') return { backgroundColor: colors.statusErrorBg };
   return { backgroundColor: colors.statusWarningBg };
 }
 
-function statusTextStyle(status: Transaction['status']) {
+function statusTextStyle(status: Transaction['status'], colors: AppColors) {
   if (status === 'liquidada') return { color: colors.statusSuccess };
   if (status === 'cancelada') return { color: colors.statusError };
   return { color: colors.statusWarning };
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-  },
-  searchBar: {
-    marginBottom: 12,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 12,
-  },
-  filterPill: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: borderRadius.full,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-  },
-  filterPillActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  filterPillText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 12,
-    color: colors.graphiteMuted,
-  },
-  filterPillTextActive: {
-    color: '#FFFFFF',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
-  summaryBox: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    paddingVertical: 9,
-    paddingHorizontal: 10,
-  },
-  summaryLabel: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  summaryValue: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 13,
-    color: colors.graphiteText,
-    marginTop: 2,
-  },
-  listContent: {
-    paddingBottom: 100,
-  },
-  transactionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: borderRadius.lg,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: colors.borderWhisper,
-    marginBottom: 10,
-    ...shadows.card,
-  },
-  cardCancelled: {
-    opacity: 0.6,
-  },
-  textCancelled: {
-    textDecorationLine: 'line-through',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  cardInfo: {
-    flex: 1,
-    marginRight: 10,
-  },
-  badgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginBottom: 5,
-  },
-  categoryBadge: {
-    backgroundColor: colors.lavenderTint,
-    paddingHorizontal: 7,
-    paddingVertical: 1.5,
-    borderRadius: borderRadius.xs,
-  },
-  categoryText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 9,
-    color: colors.primary,
-  },
-  paymentPill: {
-    backgroundColor: colors.surfaceContainer,
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: borderRadius.xs,
-  },
-  paymentText: {
-    fontFamily: typography.fonts.bodyMedium,
-    fontSize: 9,
-    color: colors.graphiteMuted,
-  },
-  dateText: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-  },
-  itemTitle: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 14,
-    color: colors.graphiteText,
-    marginBottom: 2,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  professionalText: {
-    fontFamily: typography.fonts.body,
-    fontSize: 11,
-    color: colors.graphiteMuted,
-  },
-  originPill: {
-    backgroundColor: colors.lavenderLight,
-    borderWidth: 1,
-    borderColor: colors.lavenderSubtle,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: borderRadius.xs,
-  },
-  originText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 8,
-    color: colors.violetRoyal,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  amountBox: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  amountText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 14,
-  },
-  incomeText: {
-    color: colors.violetRoyal,
-  },
-  expenseText: {
-    color: colors.statusError,
-  },
-  statusPill: {
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: borderRadius.xs,
-  },
-  statusText: {
-    fontFamily: typography.fonts.bodyBold,
-    fontSize: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  breakdownRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginTop: 10,
-    paddingTop: 9,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderWhisper,
-  },
-  breakdownItem: {
-    fontFamily: typography.fonts.body,
-    fontSize: 10,
-    color: colors.graphiteMuted,
-  },
-  breakdownValue: {
-    fontFamily: typography.fonts.bodySemiBold,
-    color: colors.graphiteText,
-  },
-  breakdownHighlight: {
-    color: colors.violetRoyal,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    gap: 14,
-    marginTop: 10,
-    paddingTop: 9,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderWhisper,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  actionText: {
-    fontFamily: typography.fonts.bodySemiBold,
-    fontSize: 11,
-  },
-});
+const createStyles = ({ colors, shadows, borderWidth, s }: ReturnType<typeof useAppTheme>) =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+      paddingHorizontal: 16,
+      paddingTop: 14,
+    },
+    searchBar: {
+      marginBottom: 12,
+    },
+    filterRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 12,
+    },
+    filterPill: {
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: borderRadius.full,
+      backgroundColor: colors.surfacePure,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+    },
+    filterPillActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    filterPillText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(12),
+      color: colors.graphiteMuted,
+    },
+    filterPillTextActive: {
+      color: colors.onPrimary,
+    },
+    summaryRow: {
+      flexDirection: 'row',
+      gap: 8,
+      marginBottom: 14,
+    },
+    summaryBox: {
+      flex: 1,
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.md,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      paddingVertical: 9,
+      paddingHorizontal: 10,
+    },
+    summaryLabel: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    summaryValue: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(13),
+      color: colors.graphiteText,
+      marginTop: 2,
+    },
+    listContent: {
+      paddingBottom: 100,
+    },
+    transactionCard: {
+      backgroundColor: colors.surfacePure,
+      borderRadius: borderRadius.lg,
+      padding: 14,
+      borderWidth,
+      borderColor: colors.borderWhisper,
+      marginBottom: 10,
+      ...shadows.card,
+    },
+    cardCancelled: {
+      opacity: 0.6,
+    },
+    textCancelled: {
+      textDecorationLine: 'line-through',
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+    },
+    cardInfo: {
+      flex: 1,
+      marginRight: 10,
+    },
+    badgeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginBottom: 5,
+    },
+    categoryBadge: {
+      backgroundColor: colors.lavenderTint,
+      paddingHorizontal: 7,
+      paddingVertical: 1.5,
+      borderRadius: borderRadius.xs,
+    },
+    categoryText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(9),
+      color: colors.primary,
+    },
+    paymentPill: {
+      backgroundColor: colors.surfaceContainer,
+      paddingHorizontal: 6,
+      paddingVertical: 1.5,
+      borderRadius: borderRadius.xs,
+    },
+    paymentText: {
+      fontFamily: typography.fonts.bodyMedium,
+      fontSize: s(9),
+      color: colors.graphiteMuted,
+    },
+    dateText: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+    },
+    itemTitle: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(14),
+      color: colors.graphiteText,
+      marginBottom: 2,
+    },
+    metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    professionalText: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(11),
+      color: colors.graphiteMuted,
+    },
+    originPill: {
+      backgroundColor: colors.lavenderLight,
+      borderWidth,
+      borderColor: colors.lavenderSubtle,
+      paddingHorizontal: 5,
+      paddingVertical: 1,
+      borderRadius: borderRadius.xs,
+    },
+    originText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(8),
+      color: colors.violetRoyal,
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    amountBox: {
+      alignItems: 'flex-end',
+      gap: 4,
+    },
+    amountText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(14),
+    },
+    incomeText: {
+      color: colors.violetRoyal,
+    },
+    expenseText: {
+      color: colors.statusError,
+    },
+    statusPill: {
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: borderRadius.xs,
+    },
+    statusText: {
+      fontFamily: typography.fonts.bodyBold,
+      fontSize: s(8),
+      textTransform: 'uppercase',
+      letterSpacing: 0.4,
+    },
+    breakdownRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+      marginTop: 10,
+      paddingTop: 9,
+      borderTopWidth: borderWidth,
+      borderTopColor: colors.borderWhisper,
+    },
+    breakdownItem: {
+      fontFamily: typography.fonts.body,
+      fontSize: s(10),
+      color: colors.graphiteMuted,
+    },
+    breakdownValue: {
+      fontFamily: typography.fonts.bodySemiBold,
+      color: colors.graphiteText,
+    },
+    breakdownHighlight: {
+      color: colors.violetRoyal,
+    },
+    actionRow: {
+      flexDirection: 'row',
+      gap: 14,
+      marginTop: 10,
+      paddingTop: 9,
+      borderTopWidth: borderWidth,
+      borderTopColor: colors.borderWhisper,
+    },
+    actionBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    actionText: {
+      fontFamily: typography.fonts.bodySemiBold,
+      fontSize: s(11),
+    },
+  });

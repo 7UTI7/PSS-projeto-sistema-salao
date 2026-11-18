@@ -17,6 +17,7 @@ import { useAuthStore } from '../../store/authStore';
 import { DEFAULT_API_URL, getApiErrorMessage } from '../../services/api';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { Button } from '../../components/ui/Button';
+import { Ionicons } from '@expo/vector-icons';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -24,6 +25,7 @@ export default function LoginScreen({ navigation }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const setAuth = useAuthStore((state) => state.setAuth);
 
   async function handleLogin() {
@@ -79,15 +81,29 @@ export default function LoginScreen({ navigation }: Props) {
             />
 
             <Text style={styles.label}>Senha</Text>
+          <View style={styles.passwordContainer}>
             <TextInput
-              style={styles.input}
+              style={styles.passwordInput}
               placeholder="Sua senha"
               placeholderTextColor={colors.graphiteMuted}
               value={password}
               onChangeText={setPassword}
-              secureTextEntry
+              secureTextEntry={!showPassword} // Mostra ou esconde a senha
               editable={!loading}
             />
+            <TouchableOpacity
+              style={styles.eyeBtn}
+              onPress={() => setShowPassword((prev) => !prev)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color={colors.graphiteMuted}
+              />
+            </TouchableOpacity>
+          </View>
 
             <TouchableOpacity
               style={styles.forgotBtn}
@@ -103,8 +119,6 @@ export default function LoginScreen({ navigation }: Props) {
               onPress={handleLogin}
               style={styles.submitBtn}
             />
-
-            <Text style={styles.apiHint}>Conectado a {DEFAULT_API_URL}</Text>
           </View>
         </View>
       </ScrollView>
@@ -207,5 +221,28 @@ const styles = StyleSheet.create({
     color: colors.graphiteMuted,
     textAlign: 'center',
     marginTop: 6,
+  },
+
+    passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceCanvas,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderWhisper,
+    marginBottom: 14,
+    paddingHorizontal: 14,
+  },
+  passwordInput: {
+    flex: 1,
+    color: colors.graphiteText,
+    paddingVertical: 11,
+    fontFamily: typography.fonts.body,
+    fontSize: 14,
+  },
+  eyeBtn: {
+    paddingLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

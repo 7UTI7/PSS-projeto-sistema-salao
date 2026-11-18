@@ -24,7 +24,7 @@ export function FloatingActionButton() {
 const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
-    bottom: 84,
+    bottom: 30,
     right: 16,
     flexDirection: 'row',
     alignItems: 'center',
