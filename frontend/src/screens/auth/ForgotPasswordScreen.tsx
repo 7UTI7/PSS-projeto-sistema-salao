@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -21,22 +20,21 @@ type Props = NativeStackScreenProps<AuthStackParamList, 'ForgotPassword'>;
 export default function ForgotPasswordScreen({ route, navigation }: Props) {
   const [email, setEmail] = useState(route.params?.email || '');
   const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   async function handleResetRequest() {
     if (!email.trim()) {
-      Alert.alert('Atenção', 'Informe seu e-mail cadastrado.');
+      setFeedback({ type: 'error', message: 'Informe seu e-mail cadastrado.' });
       return;
     }
 
+    setFeedback(null);
     setLoading(true);
     try {
       const message = await authService.forgotPassword(email.trim());
-      Alert.alert('Sucesso', message, [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
+      setFeedback({ type: 'success', message });
     } catch (error) {
-      const msg = getApiErrorMessage(error);
-      Alert.alert('Erro', msg);
+      setFeedback({ type: 'error', message: getApiErrorMessage(error) });
     } finally {
       setLoading(false);
     }
@@ -64,6 +62,15 @@ export default function ForgotPasswordScreen({ route, navigation }: Props) {
           autoCapitalize="none"
           editable={!loading}
         />
+
+        {feedback ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={feedback.type === 'success' ? styles.successMessage : styles.errorMessage}
+          >
+            {feedback.message}
+          </Text>
+        ) : null}
 
         <Button
           title="Enviar link de recuperação"
@@ -130,6 +137,18 @@ const styles = StyleSheet.create({
     fontFamily: typography.fonts.body,
     fontSize: 14,
     marginBottom: 20,
+  },
+  successMessage: {
+    fontFamily: typography.fonts.body,
+    fontSize: 13,
+    color: colors.statusSuccess,
+    marginBottom: 14,
+  },
+  errorMessage: {
+    fontFamily: typography.fonts.body,
+    fontSize: 13,
+    color: colors.statusError,
+    marginBottom: 14,
   },
   btn: {
     marginBottom: 12,

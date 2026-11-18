@@ -91,7 +91,7 @@ server {
 }
 ```
 
-Valide `sudo nginx -t` antes de recarregar. A porta interna `3000` deve aceitar tráfego apenas de loopback; não exponha MongoDB nem a porta Node na Internet. Defina `CORS_ORIGIN` com a origem explícita do aplicativo/cliente e `API_PUBLIC_URL=https://api.seudominio.example:8443`.
+Valide `sudo nginx -t` antes de recarregar. A porta interna `3000` deve aceitar tráfego apenas de loopback; não exponha MongoDB nem a porta Node na Internet. Defina `CORS_ORIGIN` com a origem explícita do aplicativo/cliente, `API_PUBLIC_URL=https://api.seudominio.example:8443` e `FRONTEND_PUBLIC_URL=https://app.seudominio.example` para que o link de redefinição abra a tela web do app.
 
 ## 5. Operação segura
 

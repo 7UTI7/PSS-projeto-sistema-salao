@@ -19,6 +19,7 @@ const controller = new AuthController();
 router.post('/register', registrationRateLimiter, asyncHandler((request, response) => controller.register(request, response)));
 router.post('/login', loginRateLimiter, asyncHandler((request, response) => controller.login(request, response)));
 router.get('/verify-email', emailVerificationRateLimiter, asyncHandler((request, response) => controller.verifyEmail(request, response)));
+router.post('/resend-verification', emailVerificationRateLimiter, asyncHandler((request, response) => controller.resendEmailVerification(request, response)));
 router.post('/forgot-password', passwordResetRequestRateLimiter, asyncHandler((request, response) => controller.requestPasswordReset(request, response)));
 router.get('/reset-password', passwordResetActionRateLimiter, asyncHandler((request, response) => controller.resetPasswordPage(request, response)));
 router.post('/reset-password', passwordResetActionRateLimiter, asyncHandler((request, response) => controller.resetPassword(request, response)));

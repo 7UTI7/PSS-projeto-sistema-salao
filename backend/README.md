@@ -43,7 +43,13 @@ Copy-Item .env.example .env
 
 Edite `.env` localmente. Defina `PORT=3000`, `MONGO_URI` com a URI do Atlas, `MONGO_DB_NAME=test`, `JWT_SECRET` com pelo menos 32 caracteres e `CORS_ORIGIN=http://localhost:8081`. Não compartilhe nem versione `.env`. Se o DNS SRV falhar na sua rede, preencha `MONGO_DNS_SERVERS`; caso contrário, deixe a variável vazia.
 
+**MongoDB Atlas:** crie um projeto e um cluster (o plano gratuito é suficiente para desenvolvimento), crie um usuário de banco em **Database Access** e libere somente o seu IP atual em **Network Access**. Em **Connect > Drivers**, copie a URI do driver Node.js, substitua `<db_password>` pela senha do usuário do banco e cole a URI em `MONGO_URI` no `.env` (não na URI da aplicação ou em um arquivo versionado). Deixe `MONGO_DB_NAME=test` para desenvolvimento; o Mongoose cria a base/coleções quando o app grava os primeiros dados. Se a senha tiver caracteres especiais, use percent-encoding na URI. Não use `0.0.0.0/0` como regra permanente de acesso.
+
 Para testar e-mail, preencha todas as variáveis `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` e `SMTP_FROM` com os dados da sandbox. A configuração deve estar completa antes de iniciar a API. Use credenciais somente no arquivo local e não no Postman, README, screenshots ou GitHub.
+
+Para receber a mensagem em uma caixa real, use uma conta de e-mail sua com SMTP habilitado. Por exemplo, no Gmail, ative a verificação em duas etapas, gere uma **senha de app** e configure `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_SECURE=false`, `SMTP_USER` com o endereço completo, `SMTP_PASSWORD` com a senha de app e `SMTP_FROM` com o mesmo endereço. Nunca use a senha normal da conta. Para testes sem entrega real, use uma caixa de sandbox SMTP (por exemplo, Mailtrap Email Sandbox); os e-mails ficam na caixa de teste do provedor, não na caixa pessoal.
+
+`API_PUBLIC_URL` é a URL da API usada nos links de confirmação. `FRONTEND_PUBLIC_URL` é a URL da tela de nova senha do app web e, no mesmo computador, deve ser `http://localhost:8081`. Se abrir o e-mail em outro dispositivo, use IP/hostname acessível para o frontend e para a API, sem barra final, e libere as portas no firewall. Reinicie os dois servidores após alterar configurações.
 
 Crie o primeiro administrador apenas se ainda não existir, preenchendo `BOOTSTRAP_ADMIN_NAME`, `BOOTSTRAP_ADMIN_EMAIL` e `BOOTSTRAP_ADMIN_PASSWORD` e rodando:
 
@@ -74,7 +80,7 @@ npm run coverage
 
 ## Rotas iniciais
 
-- `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/verify-email`
+- `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/verify-email`, `POST /api/auth/resend-verification`
 - `POST /api/auth/forgot-password`, `GET|POST /api/auth/reset-password`, `POST /api/auth/change-password`
 - `POST /api/auth/users`, `GET /api/auth/users`, `DELETE /api/auth/users/:id` (somente admin; desativação lógica, sem hard delete)
 - `GET|POST /api/transactions`, `PUT /api/transactions/:id` (corpo completo, não aceita patch parcial) e `DELETE /api/transactions/:id` (soft delete)
@@ -118,7 +124,7 @@ O cálculo de receita segue a ordem solicitada: base = bruto - desconto; taxa = 
 
 ## Observações de operação
 
-O serviço SMTP precisa estar configurado para os fluxos de e-mail. O link de redefinição abre o formulário HTML leve da API e envia `token` e `password` a `POST /api/auth/reset-password`; o app mobile pode substituir esse destino por um deep link próprio. Em produção, defina `CORS_ORIGIN` com origens explícitas e use HTTPS. `OTEL_EXPORTER_OTLP_ENDPOINT` habilita exportação de traces OpenTelemetry; Datadog e New Relic podem consumir OTLP.
+O serviço SMTP precisa estar configurado para os fluxos de e-mail. O link de redefinição abre `FRONTEND_PUBLIC_URL/reset-password?token=...`; a tela envia o token e a nova senha a `POST /api/auth/reset-password`. A tela mobile `ForgotPassword` solicita o e-mail; `ChangePassword` é para quem já está autenticado. O Mailtrap Email Sandbox captura mensagens para teste, mas não entrega a destinatários reais; para produção, use um remetente/domínio verificado em um provedor de e-mail transacional. Defina `API_PUBLIC_URL`, `FRONTEND_PUBLIC_URL` e `CORS_ORIGIN` com domínios HTTPS explícitos. `OTEL_EXPORTER_OTLP_ENDPOINT` habilita exportação de traces OpenTelemetry; Datadog e New Relic podem consumir OTLP.
 
 ### Observabilidade local (OpenTelemetry + Jaeger)
 
@@ -158,6 +164,8 @@ Veja [DEPLOYMENT.md](DEPLOYMENT.md) para a VPS e o guia de divulgação respons�
 | `TRUST_PROXY` | Número de proxies confiáveis. Padrão: `1` em produção, `0` nos demais. Exige `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` no Nginx; sem isso o rate limit trata todos como um único IP. |
 | `MONGO_URI`, `MONGO_DB_NAME` | Conexão com o MongoDB. |
 | `JWT_SECRET` | Chave de assinatura do JWT (mínimo 32 caracteres). |
+| `API_PUBLIC_URL` | URL pública/acessível usada nos links de confirmação e redefinição enviados por e-mail. |
+| `FRONTEND_PUBLIC_URL` | URL do app web usada pelo link que abre a tela de nova senha. |
 | `SMTP_*` | Envio de e-mail (todas ou nenhuma). |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Base OTLP/HTTP; o código acrescenta `/v1/traces`. Vazio desativa a exportação. |
 | `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_SERVICE_NAME` | Lidas pelo SDK do OpenTelemetry (chave do Datadog/New Relic só no `.env` do servidor). |

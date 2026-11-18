@@ -23,4 +23,5 @@ export type RootStackParamList = {
   Categories: undefined;
   ImportHistory: undefined;
   ChangePasswordMandatory: undefined;
+  ResetPassword: { token?: string } | undefined;
 };

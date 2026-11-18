@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
+import { LinkingOptions, NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +17,7 @@ import {
 import LoginScreen from '../screens/auth/LoginScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 import ChangePasswordScreen from '../screens/auth/ChangePasswordScreen';
+import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 
 // Telas Main
 import DashboardScreen from '../screens/main/DashboardScreen';
@@ -36,6 +37,14 @@ import { typography, useAppTheme } from '../theme/theme';
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const MainTab = createBottomTabNavigator<MainTabParamList>();
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: ['nicolle-studio://', ...(typeof window !== 'undefined' ? [window.location.origin] : [])],
+  config: {
+    screens: {
+      ResetPassword: 'reset-password',
+    },
+  },
+};
 
 /** Ícone de cada aba, no par preenchido/contorno. */
 const TAB_ICONS: Record<keyof MainTabParamList, [keyof typeof Ionicons.glyphMap, keyof typeof Ionicons.glyphMap]> = {
@@ -175,7 +184,7 @@ export default function AppNavigator() {
   }
 
   return (
-    <NavigationContainer theme={navigationTheme}>
+    <NavigationContainer linking={linking} theme={navigationTheme}>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {!isAuthenticated ? (
           <RootStack.Screen name="Auth" component={AuthNavigator} />
@@ -218,6 +227,11 @@ export default function AppNavigator() {
             />
           </>
         )}
+        <RootStack.Screen
+          name="ResetPassword"
+          component={ResetPasswordScreen}
+          options={{ headerShown: false }}
+        />
       </RootStack.Navigator>
     </NavigationContainer>
   );

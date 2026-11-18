@@ -100,10 +100,12 @@ export class AuthService {
       lastPasswordChange: new Date(),
     });
 
+    const verificationUrl = new URL('api/auth/verify-email', `${env.API_PUBLIC_URL.replace(/\/+$/, '')}/`);
+    verificationUrl.searchParams.set('token', token);
     await emailService.sendActionLink(
       user.email,
       'Confirme seu e-mail - Nicolle Neris Studio',
-      `${env.API_PUBLIC_URL}/api/auth/verify-email?token=${encodeURIComponent(token)}`,
+      verificationUrl.toString(),
     );
   }
 
@@ -144,6 +146,24 @@ export class AuthService {
     await user.save();
   }
 
+  async resendEmailVerification(email: string): Promise<void> {
+    const user = await User.findOne({ email: email.toLowerCase(), deletedAt: null });
+    if (!user || user.emailVerified) return;
+
+    const token = randomUUID();
+    user.emailVerificationTokenHash = hashToken(token);
+    user.emailVerificationExpiresAt = new Date(Date.now() + TOKEN_TTL_MS);
+    await user.save();
+
+    const verificationUrl = new URL('api/auth/verify-email', `${env.API_PUBLIC_URL.replace(/\/+$/, '')}/`);
+    verificationUrl.searchParams.set('token', token);
+    await emailService.sendActionLink(
+      user.email,
+      'Confirme seu e-mail - Nicolle Neris Studio',
+      verificationUrl.toString(),
+    );
+  }
+
   async requestPasswordReset(email: string): Promise<void> {
     const user = await User.findOne({ email: email.toLowerCase(), deletedAt: null });
     if (!user) return;
@@ -154,11 +174,13 @@ export class AuthService {
     user.passwordResetExpiresAt = new Date(Date.now() + TOKEN_TTL_MS);
     await user.save();
 
+    const resetUrl = new URL('reset-password', `${env.FRONTEND_PUBLIC_URL.replace(/\/+$/, '')}/`);
+    resetUrl.searchParams.set('token', token);
     try {
       await emailService.sendActionLink(
         user.email,
         'Redefinição de senha - Nicolle Neris Studio',
-        `${env.API_PUBLIC_URL}/api/auth/reset-password?token=${encodeURIComponent(token)}`,
+        resetUrl.toString(),
       );
     } catch (error: unknown) {
       logger.error({ err: error }, 'Falha ao enviar e-mail de redefinição');
