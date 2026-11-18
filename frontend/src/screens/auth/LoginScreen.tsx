@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,7 +13,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/types';
 import { authService } from '../../services/auth.service';
 import { useAuthStore } from '../../store/authStore';
-import { DEFAULT_API_URL, getApiErrorMessage } from '../../services/api';
+import { getApiErrorMessage } from '../../services/api';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { Button } from '../../components/ui/Button';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,14 +25,16 @@ export default function LoginScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const setAuth = useAuthStore((state) => state.setAuth);
 
   async function handleLogin() {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Atenção', 'Informe seu e-mail e sua senha.');
+      setErrorMessage('Informe seu e-mail e sua senha.');
       return;
     }
 
+    setErrorMessage('');
     setLoading(true);
     try {
       const data = await authService.login(email.trim(), password);
@@ -41,8 +42,7 @@ export default function LoginScreen({ navigation }: Props) {
       // primeiro acesso e a senha vencida há mais de 90 dias.
       await setAuth(data.token, data.user);
     } catch (error) {
-      const msg = getApiErrorMessage(error);
-      Alert.alert('Erro no Login', msg);
+      setErrorMessage(getApiErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -119,6 +119,11 @@ export default function LoginScreen({ navigation }: Props) {
               onPress={handleLogin}
               style={styles.submitBtn}
             />
+            {errorMessage ? (
+              <Text accessibilityLiveRegion="polite" style={styles.errorMessage}>
+                {errorMessage}
+              </Text>
+            ) : null}
           </View>
         </View>
       </ScrollView>
@@ -214,6 +219,13 @@ const styles = StyleSheet.create({
   },
   submitBtn: {
     marginBottom: 12,
+  },
+  errorMessage: {
+    fontFamily: typography.fonts.body,
+    fontSize: 13,
+    color: colors.statusError,
+    textAlign: 'center',
+    marginTop: 4,
   },
   apiHint: {
     fontFamily: typography.fonts.body,

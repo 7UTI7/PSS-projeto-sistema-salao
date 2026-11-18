@@ -43,6 +43,11 @@ export const authService = {
     return response.data.message || 'Se a conta existir, enviaremos instruções de redefinição.';
   },
 
+  async resetPassword(token: string, password: string): Promise<string> {
+    const response = await api.post<ApiMessageResponse>('/auth/reset-password', { token, password });
+    return response.data.message;
+  },
+
   async changePassword(currentPassword: string, newPassword: string): Promise<string> {
     const response = await api.post<ApiMessageResponse>('/auth/change-password', {
       currentPassword,

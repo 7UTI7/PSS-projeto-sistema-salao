@@ -15,6 +15,7 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32),
   CORS_ORIGIN: z.string().default('*'),
   API_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
+  FRONTEND_PUBLIC_URL: z.string().url().default('http://localhost:8081'),
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).optional(),
   SMTP_SECURE: z.enum(['true', 'false']).default('false'),

@@ -68,6 +68,15 @@ export class AuthController {
     response.json({ status: 'success', message: 'E-mail confirmado.' });
   }
 
+  async resendEmailVerification(request: Request, response: Response): Promise<void> {
+    const input = parseBody(z.object({ email: emailSchema }), request.body);
+    await this.authService.resendEmailVerification(input.email);
+    response.status(202).json({
+      status: 'success',
+      message: 'Se a conta existir e ainda não estiver confirmada, enviaremos um novo e-mail.',
+    });
+  }
+
   async requestPasswordReset(request: Request, response: Response): Promise<void> {
     const input = parseBody(z.object({ email: emailSchema }), request.body);
     await this.authService.requestPasswordReset(input.email);
@@ -80,14 +89,19 @@ export class AuthController {
 
     response.type('html').send(`<!doctype html>
 <html lang="pt-BR">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Redefinir senha</title></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Redefinir senha - Nicolle Neris Studio</title>
+</head>
 <body>
   <main>
     <h1>Redefinir senha</h1>
-    <form method="post" action="/api/auth/reset-password">
+    <p>Crie uma nova senha com pelo menos 12 caracteres. Este link expira em 15 minutos e só pode ser usado uma vez.</p>
+    <form method="post" action="/api/auth/reset-password" accept-charset="UTF-8">
       <input type="hidden" name="token" value="${token.data}">
       <label for="password">Nova senha</label>
-      <input id="password" name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+      <input id="password" name="password" type="password" minlength="12" maxlength="72" autocomplete="new-password" required>
       <button type="submit">Salvar senha</button>
     </form>
   </main>
@@ -98,6 +112,14 @@ export class AuthController {
   async resetPassword(request: Request, response: Response): Promise<void> {
     const input = parseBody(resetSchema, request.body);
     await this.authService.resetPassword(input.token, input.password);
+    if (request.accepts('html')) {
+      response.type('html').send(`<!doctype html>
+<html lang="pt-BR">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Senha redefinida</title></head>
+<body><main><h1>Senha redefinida</h1><p>Sua senha foi alterada. Você já pode entrar no aplicativo com a nova senha.</p></main></body>
+</html>`);
+      return;
+    }
     response.json({ status: 'success', message: 'Senha redefinida.' });
   }
 

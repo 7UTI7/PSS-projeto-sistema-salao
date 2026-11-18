@@ -24,6 +24,8 @@ O aplicativo mobile atua como a **retaguarda financeira e analítica** do estúd
 - **Relatórios Gerenciais (Admin):** Visualização consolidada de **DRE Gerencial** (regime de competência) e **Fluxo de Caixa** (regime de caixa por liquidação).
 - **Segurança Proativa:** Suporte a expiração de sessão JWT (8h), rate limiting e política obrigatória de troca periódica de senha a cada 90 dias.
 
+O link de redefinição enviado por e-mail abre a rota web `/reset-password?token=...`. O Expo Web deve estar acessível no endereço definido em `backend/.env` por `FRONTEND_PUBLIC_URL` (padrão local: `http://localhost:8081`).
+
 ---
 
 ## 2. O Que Foi Feito (Registro de Arquitetura)
@@ -93,6 +95,7 @@ frontend/
 │   │   ├── auth/              # Telas de Autenticação
 │   │   │   ├── LoginScreen.tsx           <-- Cole seu código de Login aqui
 │   │   │   ├── ForgotPasswordScreen.tsx  <-- Cole seu código de Recuperação aqui
+│   │   │   ├── ResetPasswordScreen.tsx  <-- Tela aberta pelo link enviado por e-mail
 │   │   │   └── ChangePasswordScreen.tsx  <-- Cole seu código de Troca de Senha aqui
 │   │   └── main/              # Telas Principais do App
 │   │       ├── DashboardScreen.tsx       <-- Cole seu Dashboard aqui

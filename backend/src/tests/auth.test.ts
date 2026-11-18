@@ -93,6 +93,32 @@ describe('Esqueci a senha e redefinição', () => {
     await request(app).post('/api/auth/reset-password').send({ token, password: 'OutraSenha#2028x' }).expect(400);
   });
 
+  it('permite concluir a redefinição pelo formulário web enviado por e-mail', async () => {
+    await createUser({ email: 'web-reset@example.com' });
+    await request(app).post('/api/auth/forgot-password').send({ email: 'web-reset@example.com' }).expect(202);
+    const resetUrl = new URL(mailbox[0]!.actionUrl);
+    const token = resetUrl.searchParams.get('token');
+
+    expect(resetUrl.origin).toBe('http://localhost:8081');
+    expect(resetUrl.pathname).toBe('/reset-password');
+
+    const page = await request(app).get('/api/auth/reset-password').query({ token }).expect(200).expect('Content-Type', /html/);
+    expect(page.text).toContain('name="password"');
+    expect(page.text).toContain('name="token"');
+
+    const password = 'SenhaNovaWeb#2027';
+    const result = await request(app)
+      .post('/api/auth/reset-password')
+      .set('Accept', 'text/html')
+      .type('form')
+      .send({ token, password })
+      .expect(200)
+      .expect('Content-Type', /html/);
+    expect(result.text).toContain('Sua senha foi alterada');
+
+    await request(app).post('/api/auth/login').send({ email: 'web-reset@example.com', password }).expect(200);
+  });
+
   it('rejeita token expirado (15 minutos)', async () => {
     await createUser({ email: 'exp@example.com' });
     await request(app).post('/api/auth/forgot-password').send({ email: 'exp@example.com' }).expect(202);
@@ -100,6 +126,18 @@ describe('Esqueci a senha e redefinição', () => {
     await User.updateOne({ email: 'exp@example.com' }, { passwordResetExpiresAt: new Date(Date.now() - 1000) });
 
     await request(app).post('/api/auth/reset-password').send({ token, password: 'NovaSenhaForte#2027' }).expect(400);
+  });
+});
+
+describe('CORS', () => {
+  it('normaliza barra final da origem do frontend no preflight', async () => {
+    const response = await request(app)
+      .options('/api/auth/forgot-password')
+      .set('Origin', 'http://localhost:8081')
+      .set('Access-Control-Request-Method', 'POST')
+      .expect(204);
+
+    expect(response.headers['access-control-allow-origin']).toBe('http://localhost:8081');
   });
 });
 
@@ -111,6 +149,28 @@ describe('Confirmação de e-mail', () => {
     await request(app).get('/api/auth/verify-email').query({ token }).expect(200);
     await request(app).get('/api/auth/verify-email').query({ token }).expect(400);
     expect((await User.findOne({ email: 'conf@example.com' }))?.emailVerified).toBe(true);
+  });
+
+  it('reenvia a confirmação para uma conta existente ainda não verificada', async () => {
+    await createUser({ email: 'unverified@example.com', emailVerified: false });
+
+    await request(app)
+      .post('/api/auth/resend-verification')
+      .send({ email: 'unverified@example.com' })
+      .expect(202);
+
+    await request(app).get('/api/auth/verify-email').query({ token: tokenFromLastEmail() }).expect(200);
+    expect((await User.findOne({ email: 'unverified@example.com' }))?.emailVerified).toBe(true);
+  });
+
+  it('responde genericamente e não envia e-mail para conta inexistente', async () => {
+    const response = await request(app)
+      .post('/api/auth/resend-verification')
+      .send({ email: 'missing@example.com' })
+      .expect(202);
+
+    expect(response.body.message).toBe('Se a conta existir e ainda não estiver confirmada, enviaremos um novo e-mail.');
+    expect(mailbox).toHaveLength(0);
   });
 });
 
