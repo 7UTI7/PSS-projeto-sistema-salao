@@ -2,18 +2,27 @@
 import 'dotenv/config';
 import { isIP } from 'node:net';
 import { z } from 'zod';
+import { strongPasswordSchema } from '../shared/utils/password-policy.js';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535),
   HOST: z.string().trim().min(1).default('0.0.0.0'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
+  // Arquivo de log (JSON). Vazio = só stdout. A rotação fica com o logrotate (ver ops/logrotate).
+  LOG_FILE: z.string().trim().optional(),
   TRUST_PROXY: z.coerce.number().int().min(0).max(10).optional(),
   MONGO_URI: z.string().min(1),
   MONGO_DB_NAME: z.string().trim().min(1).default('test'),
   MONGO_DNS_SERVERS: z.string().optional(),
   JWT_SECRET: z.string().min(32),
-  CORS_ORIGIN: z.string().default('*'),
+  // Chave AES-256 (32 bytes em base64) da criptografia de campo. Gere com: openssl rand -base64 32
+  DATA_ENCRYPTION_KEY: z.string().refine(
+    (value) => Buffer.from(value, 'base64').length === 32,
+    'Use 32 bytes em base64 (openssl rand -base64 32).',
+  ),
+  // Origens explícitas, separadas por vírgula. O curinga "*" não é aceito (achado do CodeQL).
+  CORS_ORIGIN: z.string().default('http://localhost:8081'),
   API_PUBLIC_URL: z.string().url().default('http://localhost:3000'),
   FRONTEND_PUBLIC_URL: z.string().url().default('http://localhost:8081'),
   SMTP_HOST: z.string().optional(),
@@ -25,9 +34,7 @@ const envSchema = z.object({
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
   BOOTSTRAP_ADMIN_NAME: z.string().min(2).max(120).optional(),
   BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
-  BOOTSTRAP_ADMIN_PASSWORD: z.string().min(12).max(72)
-    .refine((password) => Buffer.byteLength(password, 'utf8') <= 72, 'Senha excede 72 bytes suportados pelo bcrypt.')
-    .optional(),
+  BOOTSTRAP_ADMIN_PASSWORD: strongPasswordSchema.optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -38,8 +45,8 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-if (parsed.data.NODE_ENV === 'production' && parsed.data.CORS_ORIGIN === '*') {
-  process.stderr.write('Em produção, CORS_ORIGIN deve listar origens explícitas.\n');
+if (parsed.data.CORS_ORIGIN.split(',').some((origin) => origin.trim() === '*' || origin.trim() === '')) {
+  process.stderr.write('CORS_ORIGIN deve listar origens explícitas (o curinga "*" não é permitido).\n');
   process.exit(1);
 }
 

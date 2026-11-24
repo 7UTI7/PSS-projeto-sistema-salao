@@ -7,6 +7,7 @@ import { logger } from '../../config/logger.js';
 import { BCRYPT_ROUNDS, PASSWORD_MAX_AGE_DAYS, User, type UserRole } from '../../models/user.model.js';
 import { AppError } from '../../shared/utils/app-error.js';
 import { EmailService } from '../../shared/utils/email.service.js';
+import { decryptField } from '../../shared/utils/field-encryption.js';
 
 const TOKEN_TTL_MS = 15 * 60 * 1000;
 const emailService = new EmailService();
@@ -45,7 +46,8 @@ export class AuthService {
       .lean();
     return users.map((user) => ({
       id: user._id.toString(),
-      name: user.name,
+      // .lean() não aplica getters do schema: o nome chega cifrado e é aberto aqui.
+      name: decryptField(user.name),
       email: user.email,
       role: user.role,
       mustChangePassword: user.mustChangePassword,

@@ -1,5 +1,6 @@
 // Modelo Mongoose dos usuários, perfis e dados de segurança de senha.
 import { Schema, model, type HydratedDocument } from 'mongoose';
+import { decryptField, encryptField } from '../shared/utils/field-encryption.js';
 
 export const BCRYPT_ROUNDS = 12;
 export const PASSWORD_MAX_AGE_DAYS = 90;
@@ -27,7 +28,9 @@ export type UserDocument = HydratedDocument<UserFields>;
 
 const userSchema = new Schema<UserFields>(
   {
-    name: { type: String, required: true, trim: true, maxlength: 120 },
+    // Dado pessoal criptografado em repouso (AES-256-GCM). O tamanho máximo (120) é validado no DTO,
+    // pois aqui o valor já está cifrado; o getter devolve o texto original para a aplicação.
+    name: { type: String, required: true, set: encryptField, get: decryptField },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, maxlength: 254 },
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: ['admin', 'colaborador'], default: 'colaborador', required: true },
@@ -40,7 +43,7 @@ const userSchema = new Schema<UserFields>(
     passwordResetExpiresAt: { type: Date, select: false },
     deletedAt: { type: Date, default: null, index: true },
   },
-  { timestamps: { createdAt: true, updatedAt: true }, versionKey: false },
+  { timestamps: { createdAt: true, updatedAt: true }, versionKey: false, toJSON: { getters: true }, toObject: { getters: true } },
 );
 
 export const User = model<UserFields>('User', userSchema);
