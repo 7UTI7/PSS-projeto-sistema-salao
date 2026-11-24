@@ -22,10 +22,9 @@ import { useIsAdmin } from '../../hooks/useReports';
 import { useAuthStore } from '../../store/authStore';
 import { getApiErrorMessage } from '../../services/api';
 import { formatDate } from '../../utils/formatters';
+import { PASSWORD_HINT, passwordProblem } from '../../utils/password';
 import type { UserListItem, UserRole } from '../../types';
 
-/** Mesma política do backend (passwordSchema em auth.controller.ts). */
-const MIN_PASSWORD_LENGTH = 12;
 
 const ROLES: { value: UserRole; label: string; hint: string }[] = [
   { value: 'colaborador', label: 'Colaboradora', hint: 'Registra apenas as próprias receitas' },
@@ -67,11 +66,9 @@ export default function TeamScreen() {
       Alert.alert('Confira os dados', 'Informe um e-mail válido.');
       return;
     }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      Alert.alert(
-        'Confira os dados',
-        `A senha provisória precisa de no mínimo ${MIN_PASSWORD_LENGTH} caracteres.`
-      );
+    const problem = passwordProblem(password);
+    if (problem) {
+      Alert.alert('Confira os dados', problem);
       return;
     }
 
@@ -165,7 +162,7 @@ export default function TeamScreen() {
             style={styles.input}
             value={password}
             onChangeText={setPassword}
-            placeholder={`Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
+            placeholder={PASSWORD_HINT}
             placeholderTextColor={colors.graphiteMuted}
             secureTextEntry
           />

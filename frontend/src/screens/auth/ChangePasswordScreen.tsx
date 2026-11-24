@@ -15,9 +15,8 @@ import { authService } from '../../services/auth.service';
 import { getApiErrorMessage } from '../../services/api';
 import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { Button } from '../../components/ui/Button';
+import { PASSWORD_HINT, passwordProblem } from '../../utils/password';
 
-/** Mínimo exigido pelo backend (passwordSchema em auth.controller.ts). */
-const MIN_PASSWORD_LENGTH = 12;
 
 export default function ChangePasswordScreen() {
   const [currentPassword, setCurrentPassword] = useState('');
@@ -33,8 +32,9 @@ export default function ChangePasswordScreen() {
       return;
     }
 
-    if (newPassword.length < MIN_PASSWORD_LENGTH) {
-      Alert.alert('Atenção', `A nova senha deve ter no mínimo ${MIN_PASSWORD_LENGTH} caracteres.`);
+    const problem = passwordProblem(newPassword);
+    if (problem) {
+      Alert.alert('Atenção', problem);
       return;
     }
 
@@ -93,7 +93,7 @@ export default function ChangePasswordScreen() {
           <Text style={styles.label}>Nova Senha</Text>
           <TextInput
             style={styles.input}
-            placeholder={`Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
+            placeholder={PASSWORD_HINT}
             placeholderTextColor={colors.graphiteMuted}
             value={newPassword}
             onChangeText={setNewPassword}
