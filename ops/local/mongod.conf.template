@@ -1,0 +1,24 @@
+# MongoDB local do Sistema Salão (homologação no WSL/Linux).
+# Gerado por ops/local/mongo.sh a partir deste modelo; __RUNTIME__ vira o caminho absoluto.
+net:
+  # Porta alterada: a padrão do MongoDB é 27017.
+  port: 27717
+  # Escuta só na máquina local; o banco nunca fica exposto na rede.
+  bindIp: 127.0.0.1
+security:
+  # Sem usuário e senha, nenhuma operação é aceita.
+  authorization: enabled
+storage:
+  dbPath: __RUNTIME__/data
+systemLog:
+  destination: file
+  path: __RUNTIME__/logs/mongod.log
+  logAppend: true
+  # Na rotação (SIGUSR1), o mongod reabre o mesmo arquivo; quem renomeia é o logrotate.
+  logRotate: reopen
+operationProfiling:
+  # Registra no log as operações com mais de 100 ms.
+  mode: off
+  slowOpThresholdMs: 100
+processManagement:
+  pidFilePath: __RUNTIME__/mongod.pid

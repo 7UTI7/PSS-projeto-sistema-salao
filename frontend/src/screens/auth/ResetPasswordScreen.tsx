@@ -14,9 +14,9 @@ import { colors, typography, borderRadius, shadows } from '../../theme/theme';
 import { getApiErrorMessage } from '../../services/api';
 import { authService } from '../../services/auth.service';
 import type { RootStackParamList } from '../../navigation/types';
+import { PASSWORD_HINT, passwordProblem } from '../../utils/password';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ResetPassword'>;
-const MIN_PASSWORD_LENGTH = 12;
 
 export default function ResetPasswordScreen({ route }: Props) {
   const token = route.params?.token;
@@ -32,8 +32,9 @@ export default function ResetPasswordScreen({ route }: Props) {
       return;
     }
 
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setErrorMessage(`A senha precisa ter pelo menos ${MIN_PASSWORD_LENGTH} caracteres.`);
+    const problem = passwordProblem(password);
+    if (problem) {
+      setErrorMessage(problem);
       return;
     }
 
@@ -65,7 +66,7 @@ export default function ResetPasswordScreen({ route }: Props) {
           <Text style={styles.subtitle}>
             {completed
               ? 'Sua senha foi alterada. Volte ao login e acesse sua conta com a nova senha.'
-              : 'Escolha uma senha com pelo menos 12 caracteres. O link é válido por 15 minutos e só pode ser usado uma vez.'}
+              : `Escolha uma senha forte (${PASSWORD_HINT}). O link é válido por 15 minutos e só pode ser usado uma vez.`}
           </Text>
 
           {!completed && token ? (
@@ -73,7 +74,7 @@ export default function ResetPasswordScreen({ route }: Props) {
               <Text style={styles.label}>Nova senha</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Mínimo de 12 caracteres"
+                placeholder={PASSWORD_HINT}
                 placeholderTextColor={colors.graphiteMuted}
                 value={password}
                 onChangeText={setPassword}

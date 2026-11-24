@@ -356,7 +356,8 @@ export class ImportService {
   ): Promise<{ importedCount: number; duplicateCount: number }> {
     // Linhas já presentes de uma importação anterior (arquivos com períodos sobrepostos).
     const externalIds = rows.map((row) => row.externalId);
-    const known = await Transaction.find({ origin: source, externalId: { $in: externalIds }, deletedAt: null })
+    // $eq: a origem vem da requisição e nunca pode virar operador do MongoDB (achado do CodeQL).
+    const known = await Transaction.find({ origin: { $eq: source }, externalId: { $in: externalIds }, deletedAt: null })
       .select('externalId')
       .lean();
     const knownIds = new Set(known.map((transaction) => transaction.externalId));

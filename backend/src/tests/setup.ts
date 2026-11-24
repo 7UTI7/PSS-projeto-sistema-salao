@@ -7,6 +7,7 @@ process.env['NODE_ENV'] = 'test';
 process.env['PORT'] = '3999';
 process.env['MONGO_URI'] = 'mongodb://127.0.0.1:27017/unused';
 process.env['JWT_SECRET'] = 'test-secret-with-at-least-32-characters-long';
+process.env['DATA_ENCRYPTION_KEY'] = Buffer.alloc(32, 7).toString('base64');
 process.env['CORS_ORIGIN'] = 'http://localhost:8081/';
 process.env['API_PUBLIC_URL'] = 'http://localhost:3999/';
 process.env['FRONTEND_PUBLIC_URL'] = 'http://localhost:8081/';

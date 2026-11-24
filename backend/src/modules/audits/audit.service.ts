@@ -153,7 +153,7 @@ export class AuditService {
       Transaction.find({ ...common, category: WITHDRAWAL_CATEGORY, countsInDre: false })
         .select('grossAmount')
         .lean(),
-      Audit.findOne({ period }).lean(),
+      Audit.findOne({ period: { $eq: String(period) } }).lean(),
     ]);
 
     const faturamentoBooksy = roundCurrency(

@@ -18,7 +18,7 @@ const trustedProxyHops = env.TRUST_PROXY ?? (env.NODE_ENV === 'production' ? 1 :
 if (trustedProxyHops > 0) app.set('trust proxy', trustedProxyHops);
 app.use(helmet());
 const corsOrigins = env.CORS_ORIGIN.split(',').map((origin) => origin.trim().replace(/\/+$/, ''));
-app.use(cors({ origin: env.CORS_ORIGIN === '*' ? true : corsOrigins }));
+app.use(cors({ origin: corsOrigins }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1kb' }));
 app.use(pinoHttp({

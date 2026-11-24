@@ -13,7 +13,7 @@ export async function connectDatabase(): Promise<void> {
     dbName: env.MONGO_DB_NAME,
     serverSelectionTimeoutMS: 10_000,
   });
-  logger.info({ database: env.MONGO_DB_NAME }, 'Conexão com MongoDB estabelecida');
+  logger.info('Conexão com MongoDB estabelecida');
 }
 
 export async function disconnectDatabase(): Promise<void> {

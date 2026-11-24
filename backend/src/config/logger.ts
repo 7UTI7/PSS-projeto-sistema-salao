@@ -34,7 +34,19 @@ export const loggerOptions: LoggerOptions = {
   },
 };
 
-export const logger = pino({
-  ...loggerOptions,
-  ...(env.NODE_ENV === 'development' ? { transport: { target: 'pino-pretty' } } : {}),
-});
+function createLogger(): pino.Logger {
+  if (!env.LOG_FILE) {
+    return pino({
+      ...loggerOptions,
+      ...(env.NODE_ENV === 'development' ? { transport: { target: 'pino-pretty' } } : {}),
+    });
+  }
+
+  // Com LOG_FILE, cada linha vai para o stdout e para o arquivo. O logrotate renomeia o arquivo
+  // e envia SIGHUP; aqui o arquivo é reaberto, sem reiniciar a API nem perder linhas.
+  const file = pino.destination({ dest: env.LOG_FILE, mkdir: true, sync: false });
+  process.on('SIGHUP', () => file.reopen());
+  return pino(loggerOptions, pino.multistream([{ stream: process.stdout }, { stream: file }]));
+}
+
+export const logger = createLogger();

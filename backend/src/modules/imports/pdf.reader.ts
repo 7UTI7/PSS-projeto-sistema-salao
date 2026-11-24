@@ -125,7 +125,9 @@ export function readPdf(buffer: Buffer): SheetTable[] {
  */
 function parseObjects(raw: string): Map<number, PdfObject> {
   const objects = new Map<number, PdfObject>();
-  const pattern = /(\d+)\s+0\s+obj\b/g;
+  // Quantificadores limitados e sem início no meio de um número: um PDF hostil com uma
+  // sequência enorme de dígitos fazia a regex anterior rodar em tempo quadrático (ReDoS, CodeQL).
+  const pattern = /(?<!\d)(\d{1,10})\s{1,32}0\s{1,32}obj\b/g;
   let match: RegExpExecArray | null;
 
   while ((match = pattern.exec(raw)) !== null) {
@@ -468,17 +470,35 @@ const CP1252_HIGH: ReadonlyMap<number, string> = new Map([
  * O /ToUnicode é um CMap em PostScript. Só os blocos bfchar (um a um) e bfrange (faixas)
  * importam para transformar o código do glifo em texto legível.
  */
+/**
+ * Trechos entre marcadores, em tempo linear. Substitui /inicio([\s\S]*?)fim/g, que num CMap
+ * com muitos "inicio" e nenhum "fim" voltava a varrer o texto inteiro a cada ocorrência (ReDoS).
+ */
+function blocksBetween(text: string, open: string, close: string): string[] {
+  const blocks: string[] = [];
+  let from = 0;
+  for (;;) {
+    const start = text.indexOf(open, from);
+    if (start === -1) break;
+    const end = text.indexOf(close, start + open.length);
+    if (end === -1) break;
+    blocks.push(text.slice(start + open.length, end));
+    from = end + close.length;
+  }
+  return blocks;
+}
+
 export function parseToUnicode(cmap: string): Map<number, string> {
   const map = new Map<number, string>();
 
-  for (const block of cmap.matchAll(/beginbfchar([\s\S]*?)endbfchar/g)) {
-    for (const entry of (block[1] ?? '').matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)) {
+  for (const block of blocksBetween(cmap, 'beginbfchar', 'endbfchar')) {
+    for (const entry of block.matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)) {
       map.set(parseInt(entry[1] ?? '0', 16), hexToText(entry[2] ?? ''));
     }
   }
 
-  for (const block of cmap.matchAll(/beginbfrange([\s\S]*?)endbfrange/g)) {
-    for (const entry of (block[1] ?? '').matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)) {
+  for (const block of blocksBetween(cmap, 'beginbfrange', 'endbfrange')) {
+    for (const entry of block.matchAll(/<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>/g)) {
       const low = parseInt(entry[1] ?? '0', 16);
       const high = parseInt(entry[2] ?? '0', 16);
       const base = parseInt(entry[3] ?? '0', 16);

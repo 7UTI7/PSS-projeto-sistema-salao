@@ -3,9 +3,10 @@ import type { Request, Response } from 'express';
 import { z } from 'zod';
 import { AuthService } from '../modules/auth/auth.service.js';
 import { AppError } from '../shared/utils/app-error.js';
+import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, strongPasswordSchema } from '../shared/utils/password-policy.js';
 
-const passwordSchema = z.string().min(12).max(72)
-  .refine((password) => Buffer.byteLength(password, 'utf8') <= 72, 'Senha excede 72 bytes suportados pelo bcrypt.');
+const passwordSchema = strongPasswordSchema;
+const PASSWORD_FIELDS = new Set(['password', 'newPassword']);
 const emailSchema = z.string().email().max(254);
 const registerSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -20,9 +21,21 @@ const changeSchema = z.object({
 });
 const adminCreateSchema = registerSchema.extend({ role: z.enum(['admin', 'colaborador']) });
 
+/** Escapa texto inserido em HTML (defesa em profundidade além da validação de UUID; achado do CodeQL). */
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
+}
+
 function parseBody<T>(schema: z.ZodType<T>, body: unknown): T {
   const result = schema.safeParse(body);
-  if (!result.success) throw new AppError('Dados de entrada inválidos.', 400, 'VALIDATION_ERROR');
+  if (!result.success) {
+    // Senha fraca devolve a regra violada, para o usuário saber o que corrigir; o resto continua genérico.
+    const weakPassword = result.error.issues.find(
+      (issue) => issue.code === 'custom' && PASSWORD_FIELDS.has(String(issue.path[0])),
+    );
+    if (weakPassword) throw new AppError(weakPassword.message, 400, 'WEAK_PASSWORD');
+    throw new AppError('Dados de entrada inválidos.', 400, 'VALIDATION_ERROR');
+  }
   return result.data;
 }
 
@@ -97,11 +110,11 @@ export class AuthController {
 <body>
   <main>
     <h1>Redefinir senha</h1>
-    <p>Crie uma nova senha com pelo menos 12 caracteres. Este link expira em 15 minutos e só pode ser usado uma vez.</p>
+    <p>Crie uma nova senha com ${PASSWORD_MIN_LENGTH} a ${PASSWORD_MAX_BYTES} caracteres, contendo letra maiúscula, letra minúscula, número e caractere especial. Este link expira em 15 minutos e só pode ser usado uma vez.</p>
     <form method="post" action="/api/auth/reset-password" accept-charset="UTF-8">
-      <input type="hidden" name="token" value="${token.data}">
+      <input type="hidden" name="token" value="${escapeHtml(token.data)}">
       <label for="password">Nova senha</label>
-      <input id="password" name="password" type="password" minlength="12" maxlength="72" autocomplete="new-password" required>
+      <input id="password" name="password" type="password" minlength="${PASSWORD_MIN_LENGTH}" maxlength="${PASSWORD_MAX_BYTES}" autocomplete="new-password" required>
       <button type="submit">Salvar senha</button>
     </form>
   </main>
