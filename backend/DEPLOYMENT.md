@@ -1,4 +1,3 @@
-Configure UFW permitindo SSH em `22822/tcp` e HTTPS em `8443/tcp` (por exemplo, `sudo ufw allow 22822/tcp` e `sudo ufw allow 8443/tcp`, depois `sudo ufw enable`); não remova o acesso atual até validar a nova porta. Mantenha um procedimento de recuperação pelo console do provedor.
 # Implantação VPS - Ubuntu Server 22.04 LTS
 
 ## 1. Preparação do host
@@ -17,7 +16,7 @@ sudo adduser --system --group --home /opt/nodeapp nodeapp
 sudo install -d -o nodeapp -g nodeapp /opt/nodeapp/app
 ```
 
-Instale Node.js 20 LTS pelo repositório corporativo aprovado ou NodeSource; valide `node --version` e `npm --version`. Compile a release em CI com `npm ci && npm run build`; implante `dist/`, `package.json` e `package-lock.json` em `/opt/nodeapp/app`, instale dependências de runtime com `npm ci --omit=dev` e execute `npm start` sob systemd.
+Instale Node.js 24 LTS pelo repositório corporativo aprovado ou NodeSource; valide `node --version` e `npm --version`. Compile a release em CI com `npm ci && npm run build`; implante `dist/`, `package.json` e `package-lock.json` em `/opt/nodeapp/app`, instale dependências de runtime com `npm ci --omit=dev` e execute `npm start` sob systemd.
 
 ## 2. Endurecimento SSH
 
@@ -34,7 +33,7 @@ Valide com `sudo sshd -t`, libere primeiro a porta em firewall/regras do provedo
 
 ## 3. Segredos e serviço Node
 
-Crie `/etc/nodeapp/api.env` com proprietário `root:nodeapp`, permissão `0640` e os valores de produção (`MONGO_URI`, `JWT_SECRET`, SMTP e URLs). Não copie `.env` para a imagem ou repositório. Restrinja no Atlas o acesso de rede e o usuário do banco ao mínimo necessário.
+Crie `/etc/nodeapp/api.env` com proprietário `root:nodeapp`, permissão `0640` e os valores de produção (`MONGO_URI`, `JWT_SECRET`, `DATA_ENCRYPTION_KEY`, SMTP e URLs). Para logs em arquivo, defina `LOG_FILE=/var/log/sistema-salao/api.log`, crie a pasta com `sudo install -d -o nodeapp -g nodeapp -m 0750 /var/log/sistema-salao` e copie `ops/logrotate/sistema-salao.production.conf` para `/etc/logrotate.d/sistema-salao` (a API reabre o arquivo ao receber SIGHUP). Não copie `.env` para a imagem ou repositório. Restrinja no Atlas o acesso de rede e o usuário do banco ao mínimo necessário.
 
 Exemplo de `/etc/systemd/system/nodeapp.service`:
 
@@ -57,7 +56,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ProtectHome=true
+ReadWritePaths=/var/log/sistema-salao
 UMask=0027
 
 [Install]

@@ -1,6 +1,6 @@
 # Backend - Sistema Salão
 
-API em Node.js 20+, TypeScript 5, Express 5 e MongoDB Atlas/Mongoose 8. Organizada em **camadas MVC** dentro de `src/`:
+API em Node.js 22.15+ (recomendado 24 LTS), TypeScript 5, Express 5 e MongoDB Atlas/Mongoose 8. Organizada em **camadas MVC** dentro de `src/`:
 
 ```
 src/
@@ -26,7 +26,7 @@ O fluxo de uma requisição é sempre `routes → controller → service → mod
 
 ### Pré-requisitos
 
-- Node.js 20 ou superior e npm.
+- Node.js 22.15 ou superior (recomendado 24 LTS) e npm.
 - Um cluster MongoDB Atlas e o endereço IP de desenvolvimento permitido em **Network Access**.
 - Postman para os testes HTTP.
 - Uma caixa SMTP de teste (por exemplo, Mailtrap Email Sandbox) para confirmação e reset de senha.
@@ -88,7 +88,7 @@ npm run coverage
 - `GET /api/reports/dre` e `GET /api/reports/cash-flow` (somente admin; `start` e `end` em ISO 8601 completo)
 - `POST /api/imports/preview`, `POST /api/imports`, `GET /api/imports` e `DELETE /api/imports/:id` (somente admin)
 
-Cadastro público sempre cria `colaborador`; somente o admin pode criar outras contas ou atribuir papel. O JWT expira em 8 horas e o papel é recarregado do banco em cada requisição. Senhas usam bcrypt com 12 rounds e até 72 bytes (limite efetivo do bcrypt). Tokens de confirmação/reset são UUID v4 aleatórios, armazenados como SHA-256 e expiram em 15 minutos.
+Cadastro público sempre cria `colaborador`; somente o admin pode criar outras contas ou atribuir papel. O JWT expira em 8 horas e o papel é recarregado do banco em cada requisição. Senhas usam bcrypt com 12 rounds e até 72 bytes (limite efetivo do bcrypt) e precisam ter 12+ caracteres com letra maiúscula, minúscula, número e caractere especial (`src/shared/utils/password-policy.ts`). Tokens de confirmação/reset são UUID v4 aleatórios, armazenados como SHA-256 e expiram em 15 minutos.
 
 ## Importação de relatórios
 
@@ -153,6 +153,10 @@ Em todas as requisições JSON, selecione **Body > raw > JSON**. Não use vírgu
 - **Datadog/New Relic:** não são necessários para a prova OpenTelemetry local; um collector Jaeger foi configurado e testado. Integração APM externa precisa de conta/endpoint próprio.
 
 Veja [DEPLOYMENT.md](DEPLOYMENT.md) para a VPS e o guia de divulgação responsável em [../SECURITY.md](../SECURITY.md).
+## Homologação local sem Docker (WSL/Linux)
+
+`ops/local/mongo.sh setup` sobe um MongoDB local na porta **27717** (não a padrão 27017), só em `127.0.0.1`, com autenticação obrigatória, um usuário de gestão `salao_dba` e um usuário da API `salao_api` com permissão apenas no banco `salao`. As senhas são geradas aleatoriamente em `ops/local/.runtime/mongo.env` (permissão 600, fora do Git) e o script cria um `backend/.env` local com a API na porta **3900**. `ops/local/mongo.sh rotate` rotaciona os logs do MongoDB e da API com o logrotate.
+
 ## Configuração por variável de ambiente
 
 | Variável | Para que serve |
@@ -164,6 +168,8 @@ Veja [DEPLOYMENT.md](DEPLOYMENT.md) para a VPS e o guia de divulgação respons�
 | `TRUST_PROXY` | Número de proxies confiáveis. Padrão: `1` em produção, `0` nos demais. Exige `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` no Nginx; sem isso o rate limit trata todos como um único IP. |
 | `MONGO_URI`, `MONGO_DB_NAME` | Conexão com o MongoDB. |
 | `JWT_SECRET` | Chave de assinatura do JWT (mínimo 32 caracteres). |
+| `DATA_ENCRYPTION_KEY` | Chave AES-256 (32 bytes em base64, `openssl rand -base64 32`) da criptografia do campo `users.name`. Depois de definir, rode `npm run encrypt:names` uma vez para cifrar nomes já existentes. |
+| `LOG_FILE` | Opcional. Grava os logs também em arquivo; a rotação é feita pelo logrotate (`ops/logrotate`). |
 | `API_PUBLIC_URL` | URL pública/acessível usada nos links de confirmação e redefinição enviados por e-mail. |
 | `FRONTEND_PUBLIC_URL` | URL do app web usada pelo link que abre a tela de nova senha. |
 | `SMTP_*` | Envio de e-mail (todas ou nenhuma). |

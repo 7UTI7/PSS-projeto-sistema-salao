@@ -68,9 +68,10 @@ PSS-projeto-sistema-salao/
 - **Axios** (requisições HTTP com interceptors JWT)
 
 ### Backend (API)
-- **Node.js 20+** + **TypeScript 5+** com **Express** em camadas
+- **Node.js 24 LTS** + **TypeScript 5+** com **Express** em camadas
 - **Mongoose 8+** → **MongoDB Atlas** (persistência da API)
-- **JWT** + **bcrypt com 12 rounds** (autenticação e segurança)
+- **JWT** + **bcrypt com 12 rounds** + senha forte obrigatória (autenticação e segurança)
+- **AES-256-GCM** para o nome do usuário em repouso (criptografia de campo)
 - **Zod** (DTOs e variáveis de ambiente) + **Pino** (logs JSON com redação)
 - **OpenTelemetry** opcional para exportação de traces via OTLP
 
