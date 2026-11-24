@@ -30,9 +30,10 @@ export class CategoryService {
 
   async update(id: string, input: CategoryInput): Promise<CategoryFields> {
     await this.assertNameFree(input.name, id);
+    // $eq e campos explícitos: valores do cliente nunca viram operadores do MongoDB (achado do CodeQL).
     const category = await Category.findOneAndUpdate(
-      { _id: id, deletedAt: null },
-      { $set: input },
+      { _id: { $eq: id }, deletedAt: null },
+      { $set: { name: String(input.name), kind: input.kind, active: input.active === true } },
       { new: true, runValidators: true },
     ).lean();
     if (!category) throw new AppError('Categoria não encontrada.', 404, 'NOT_FOUND');
@@ -40,20 +41,23 @@ export class CategoryService {
   }
 
   async softDelete(id: string): Promise<void> {
-    const result = await Category.updateOne({ _id: id, deletedAt: null }, { $set: { deletedAt: new Date(), active: false } });
+    const result = await Category.updateOne({ _id: { $eq: id }, deletedAt: null }, { $set: { deletedAt: new Date(), active: false } });
     if (result.matchedCount === 0) throw new AppError('Categoria não encontrada.', 404, 'NOT_FOUND');
   }
 
   /** Garante que o nome existe no catálogo, está ativo e é compatível com o tipo do lançamento. */
   async assertActive(name: string, type: 'receita' | 'despesa'): Promise<void> {
-    const category = await Category.findOne({ name, deletedAt: null, active: true }).collation(collation).lean();
+    const category = await Category.findOne({ name: { $eq: String(name) }, deletedAt: null, active: true }).collation(collation).lean();
     if (!category || (category.kind !== 'ambos' && category.kind !== type)) {
       throw new AppError('Categoria inválida ou inativa no catálogo.', 400, 'INVALID_CATEGORY');
     }
   }
 
   private async assertNameFree(name: string, ignoreId?: string): Promise<void> {
-    const filter = ignoreId ? { name, deletedAt: null, _id: { $ne: ignoreId } } : { name, deletedAt: null };
+    const safeName = { $eq: String(name) };
+    const filter = ignoreId
+      ? { name: safeName, deletedAt: null, _id: { $ne: String(ignoreId) } }
+      : { name: safeName, deletedAt: null };
     const duplicate = await Category.exists(filter).collation(collation);
     if (duplicate) throw new AppError('Já existe uma categoria com este nome.', 409, 'CATEGORY_EXISTS');
   }
