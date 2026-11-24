@@ -37,3 +37,8 @@ yarn-error.*
 # Dependências
 # ================================
 node_modules/
+
+# ================================
+# Homologação local (dados, logs e segredos gerados por ops/local/mongo.sh)
+# ================================
+ops/local/.runtime/
